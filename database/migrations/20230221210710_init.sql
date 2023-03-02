@@ -14,16 +14,17 @@ CREATE TABLE accounts (
 
 	PRIMARY KEY(account_id),
 	-- check that at least one of exists: email, phone
-	CONSTRAINT email_or_phone CHECK(email <> NULL OR phone <> NULL)
+	CONSTRAINT email_or_phone CHECK(email != NULL OR phone != NULL)
 );
 
 CREATE TABLE sessions (
-	token bytea DEFAULT gen_random_bytes(64),
+	session_id uuid DEFAULT gen_random_uuid(),
+	token bytea UNIQUE DEFAULT gen_random_bytes(64),
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
 	expiration_date timestamp NOT NULL DEFAULT (NOW() + interval '7d'),
-	valid boolean DEFAULT TRUE NOT NULL,
+	revoked boolean DEFAULT FALSE NOT NULL,
 	CHECK(length(token) >= 64),
-	PRIMARY KEY(token)
+	PRIMARY KEY(session_id)
 );
 
 CREATE TABLE tenants (

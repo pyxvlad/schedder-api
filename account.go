@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/google/uuid"
@@ -31,6 +32,15 @@ type GenerateTokenResponse struct {
 	Token     string    `json:"token"`
 }
 
+type sessionResponse struct {
+	ID             uuid.UUID `json:"session_id"`
+	ExpirationDate time.Time `json:"expiration_date"`
+}
+
+type GetSessionsResponse struct {
+	Sessions []sessionResponse `json:"sessions"`
+}
+
 const BCRYPT_ROUNDS = 10
 
 func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +54,6 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 
 	var resp PostAccountResponse
 	password_bytes, err := bcrypt.GenerateFromPassword([]byte(account_request.Password), BCRYPT_ROUNDS)
-
 	if err != nil {
 		json_error(w, http.StatusInternalServerError, err.Error())
 	}
@@ -147,14 +156,57 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := a.db.CreateSessionToken(r.Context(), resp.AccountID)
-	resp.Token = base64.RawStdEncoding.EncodeToString(token)
 	if err != nil {
 		json_error(w, http.StatusInternalServerError, "couldn't generate token"+err.Error())
 		return
 	}
 
+	resp.Token = base64.RawStdEncoding.EncodeToString(token)
 	w.WriteHeader(http.StatusCreated)
 	encoder := json.NewEncoder(w)
 	encoder.Encode(resp)
+	return
+}
+
+func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
+	account_id := r.Context().Value("account_id").(uuid.UUID)
+
+	rows, err := a.db.GetSessionsForAccount(r.Context(), account_id)
+	if err != nil {
+		json_error(w, http.StatusInternalServerError, "couldn't get sessions")
+		return
+	}
+
+	var resp GetSessionsResponse
+
+	resp.Sessions = make([]sessionResponse, 0)
+
+	for _, r := range rows {
+		resp.Sessions = append(resp.Sessions, sessionResponse{r.SessionID, r.ExpirationDate})
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		json_error(w, http.StatusInternalServerError, "couldn't generate json")
+		return
+	}
+}
+
+func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	account_id := r.Context().Value("account_id").(uuid.UUID)
+	session_id := r.Context().Value("session_id").(uuid.UUID)
+
+	affected_rows, err := a.db.RevokeSessionForAccount(r.Context(), database.RevokeSessionForAccountParams{SessionID: session_id, AccountID: account_id})
+	if affected_rows != 1 {
+		json_error(w, http.StatusBadRequest, "invalid session")
+		return
+	}
+	if err != nil {
+		json_error(w, http.StatusInternalServerError, "couldn't revoke session")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 	return
 }

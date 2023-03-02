@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"gitlab.com/vlad.anghel/schedder-api/database"
@@ -26,9 +27,21 @@ func New(conn database.DBTX) *API {
 	api.dbtx = conn
 	api.db = database.New(api.dbtx)
 	api.mux = chi.NewRouter()
-	api.mux.Post("/accounts", api.PostAccount)
-	api.mux.Post("/token", api.GenerateToken)
-
+	api.mux.Route("/accounts", func(r chi.Router) {
+		r.Post("/", api.PostAccount)
+		r.Route("/self", func(r chi.Router) {
+			r.Use(api.AuthenticatedEndpoint)
+			r.Get("/sessions", api.GetSessionsForAccount)
+		})
+	})
+	api.mux.Route("/sessions", func(r chi.Router) {
+		r.Post("/", api.GenerateToken)
+		r.Route("/{session_id}", func(r chi.Router) {
+			r.Use(api.AuthenticatedEndpoint)
+			r.Use(api.WithSessionId)
+			r.Delete("/", api.RevokeSession)
+		})
+	})
 	return api
 }
 
@@ -105,4 +118,24 @@ func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
+}
+
+func (a *API) WithSessionId(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session_string := chi.URLParam(r, "session_id")
+		if session_string == "" {
+			json_error(w, http.StatusNotFound, "invalid session")
+			return
+		}
+
+		session_id, err := uuid.Parse(session_string)
+		if err != nil {
+			json_error(w, http.StatusNotFound, "invalid session")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "session_id", session_id)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

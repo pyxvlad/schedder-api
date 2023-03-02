@@ -2,71 +2,16 @@ package schedder_test
 
 import (
 	"bytes"
-	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/jackc/pgx/v4"
 	"gitlab.com/vlad.anghel/schedder-api"
-	"gitlab.com/vlad.anghel/schedder-api/database"
 )
-
-var conn *pgx.Conn
-
-func TestMain(m *testing.M) {
-	var err error
-
-	pg_uri := schedder.RequiredEnv("SCHEDDER_TEST_POSTGRES", "postgres://test_user@localhost/schedder_test")
-	std_db, err := sql.Open("pgx", pg_uri)
-	if err != nil {
-		panic(err)
-	}
-	database.ResetDB(std_db)
-	database.MigrateDB(std_db)
-	if err := std_db.Close(); err != nil {
-		panic(err)
-	}
-
-	conn, err = pgx.Connect(context.Background(), pg_uri)
-	if err != nil {
-		panic(err)
-	}
-
-	os.Exit(m.Run())
-}
-
-type ApiTx struct {
-	*schedder.API
-	tx pgx.Tx
-	t  *testing.T
-}
-
-func BeginTx(t *testing.T) ApiTx {
-	tx, err := conn.BeginTx(context.Background(), pgx.TxOptions{})
-	if err != nil {
-		t.Fatalf("testing: BeginTx: %e", err)
-	}
-
-	var api ApiTx
-	api.API = schedder.New(tx)
-	api.tx = tx
-	api.t = t
-	return api
-}
-
-func (a *ApiTx) Rollback() {
-	err := a.tx.Rollback(context.Background())
-	if err != nil {
-		a.t.Fatalf("testing: RollbackTx: %e", err)
-	}
-}
 
 func TestRegisterWithEmail(t *testing.T) {
 
@@ -294,80 +239,6 @@ func FuzzRegister_BadEmails(f *testing.F) {
 	})
 }
 
-func (a *ApiTx) register_user_by_email(email string, password string) {
-	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
-	w := httptest.NewRecorder()
-	a.PostAccount(w, req)
-
-	resp := w.Result()
-
-	if resp.StatusCode != http.StatusCreated {
-		a.t.Fatalf("register_user: got status %s", resp.Status)
-	}
-
-	data := make(map[string]string)
-	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		a.t.Fatal(err)
-	}
-
-	if json_err, has_error := data["error"]; has_error {
-		a.t.Fatalf("register_user: %s", json_err)
-	}
-}
-
-func (a *ApiTx) register_user_by_phone(phone string, password string) {
-	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
-	w := httptest.NewRecorder()
-	a.PostAccount(w, req)
-
-	resp := w.Result()
-
-	if resp.StatusCode != http.StatusCreated {
-		a.t.Fatalf("register_user: got status %s", resp.Status)
-	}
-
-	data := make(map[string]string)
-	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		a.t.Fatal(err)
-	}
-
-	expect(a.t, "", data["error"])
-}
-
-func (a *ApiTx) generate_token(email string, password string) (token string) {
-	data := map[string]string{"email": email, "password": password}
-
-	var b bytes.Buffer
-
-	err := json.NewEncoder(&b).Encode(data)
-	if err != nil {
-		a.t.Fatalf("generate_token: couldn't generate json")
-	}
-
-	req := httptest.NewRequest("POST", "/token", &b)
-	w := httptest.NewRecorder()
-
-	a.GenerateToken(w, req)
-
-	resp := w.Result()
-	if resp.StatusCode != http.StatusCreated {
-		a.t.Fatalf("register_user: got status %s", resp.Status)
-	}
-
-	data = make(map[string]string)
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		a.t.Fatal(err)
-	}
-
-	expect(a.t, "", data["error"])
-
-	token = data["token"]
-	return
-}
-
 func TestGenerateTokenWithEmail(t *testing.T) {
 	type Response struct {
 		schedder.PostAccountResponse
@@ -386,15 +257,12 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest("POST", "/token", &buffer)
+	req := httptest.NewRequest("POST", "/sessions", &buffer)
 	w := httptest.NewRecorder()
 
 	api.register_user_by_email(email, password)
 
 	api.ServeHTTP(w, req)
-	body, _ := ioutil.ReadAll(req.Body)
-	t.Logf(string(body))
-
 	resp := w.Result()
 
 	var response Response
@@ -433,15 +301,12 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest("POST", "/token", &buffer)
+	req := httptest.NewRequest("POST", "/sessions", &buffer)
 	w := httptest.NewRecorder()
 
 	api.register_user_by_phone(phone, password)
 
 	api.ServeHTTP(w, req)
-	body, _ := ioutil.ReadAll(req.Body)
-	t.Logf(string(body))
-
 	resp := w.Result()
 
 	var response Response
@@ -472,7 +337,7 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest("POST", "/token", &buffer)
+	req := httptest.NewRequest("POST", "/sessions", &buffer)
 	w := httptest.NewRecorder()
 
 	api.register_user_by_phone(phone, password+"bad")
@@ -518,7 +383,7 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			req := httptest.NewRequest("POST", "/token", &buffer)
+			req := httptest.NewRequest("POST", "/sessions", &buffer)
 			w := httptest.NewRecorder()
 
 			api.ServeHTTP(w, req)
@@ -594,4 +459,118 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 
 		})
 	}
+}
+
+func TestGetSessionsForAccount(t *testing.T) {
+	type GetSessionResponse struct {
+		schedder.GetSessionsResponse
+		Error string
+
+	}
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "test@example.com"
+	password := "hackme"
+	api.register_user_by_email(email, password)
+	token := api.generate_token(email, password)
+
+	req := httptest.NewRequest("GET", "/accounts/self/sessions", nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+	expect(t, http.StatusOK, resp.StatusCode)
+
+	var response GetSessionResponse
+	json.NewDecoder(resp.Body).Decode(&response.Sessions)
+
+	expect(t, "", response.Error)
+
+	for _, s := range response.Sessions {
+		if s.ExpirationDate.Sub(time.Now()) < (7 * 24 * time.Hour) {
+			t.Fatalf("session %s doesn't expire in 7 days", s.ID)
+		}
+
+		t.Logf("Session %s expires on %s", s.ID, s.ExpirationDate)
+	}
+}
+
+func TestRevokeSession(t *testing.T) {
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "test@example.com"
+	password := "hackme"
+	api.register_user_by_email(email, password)
+	token := api.generate_token(email, password)
+	sessions := api.get_sessions(token)
+
+	req := httptest.NewRequest("DELETE", "/sessions/" + sessions[0].String(), nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+	data := make(map[string]string)
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
+	expect(t, "", data["error"])
+	expect(t, http.StatusOK, resp.StatusCode)
+
+	req = httptest.NewRequest("DELETE", "/sessions/" + sessions[0].String(), nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+	w = httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	resp = w.Result()
+
+	data = make(map[string]string)
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
+
+	expect(t, http.StatusUnauthorized, resp.StatusCode)
+	expect(t, "invalid token", data["error"])
+}
+
+func TestRevokeSessionWithBadSessionId(t *testing.T) {
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "test@example.com"
+	password := "hackme"
+	api.register_user_by_email(email, password)
+	token := api.generate_token(email, password)
+
+	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
+
+	req := httptest.NewRequest("DELETE", "/sessions/" + session_id, nil)
+	req.Header.Add("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+
+	resp := w.Result()
+
+	data := make(map[string]string)
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
+
+
+	expect(t, http.StatusBadRequest, resp.StatusCode)
+	expect(t, 1, len(data))
+	expect(t, "invalid session", data["error"])
 }
