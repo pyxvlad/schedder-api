@@ -1,0 +1,7 @@
+
+# Ignore generated SQLC files
+db.go
+models.go
+*.sql.go
+
+
