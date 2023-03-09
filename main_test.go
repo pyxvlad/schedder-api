@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"runtime"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
@@ -39,6 +40,40 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+func expect[T comparable](t *testing.T, expected T, got T) {
+	if expected != got {
+		_, file, line, ok := runtime.Caller(1)
+		if !ok {
+			panic("couldn't get caller")
+		}
+
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		file = strings.TrimPrefix(file, wd + "/")
+
+		t.Fatalf("%s:%d: expected %#v, got %#v\n", file, line, expected, got)
+	}
+}
+
+func unexpect[T comparable](t *testing.T, unexpected T, got T) {
+	if unexpected == got {
+		_, file, line, ok := runtime.Caller(1)
+		if !ok {
+			panic("couldn't get caller")
+		}
+
+		wd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+		file = strings.TrimPrefix(file, wd + "/")
+
+		t.Fatalf("%s:%d: unexpected %#v, got %#v\n", file, line, unexpected, got)
+	}
 }
 
 type ApiTx struct {
@@ -110,34 +145,35 @@ func (a *ApiTx) register_user_by_phone(phone string, password string) {
 }
 
 func (a *ApiTx) generate_token(email string, password string) (token string) {
-	data := map[string]string{"email": email, "password": password}
+	req_data := schedder.GenerateTokenRequest{Email: email, Password: password, Device: "schedder testing"}
 
 	var b bytes.Buffer
 
-	err := json.NewEncoder(&b).Encode(data)
+	err := json.NewEncoder(&b).Encode(req_data)
 	if err != nil {
 		a.t.Fatalf("generate_token: couldn't generate json")
 	}
 
 	req := httptest.NewRequest("POST", "/sessions", &b)
+
+	req.RemoteAddr = "127.0.0.1"
+
 	w := httptest.NewRecorder()
 
 	a.ServeHTTP(w, req)
 
 	resp := w.Result()
-	if resp.StatusCode != http.StatusCreated {
-		a.t.Fatalf("register_user: got status %s", resp.Status)
-	}
+	expect(a.t, http.StatusCreated, resp.StatusCode)
 
-	data = make(map[string]string)
+	var data schedder.GenerateTokenResponse
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
 	}
 
-	expect(a.t, "", data["error"])
+	expect(a.t, "", data.Error)
 
-	token = data["token"]
+	token = data.Token
 	return
 }
 

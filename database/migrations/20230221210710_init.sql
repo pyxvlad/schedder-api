@@ -21,8 +21,13 @@ CREATE TABLE sessions (
 	session_id uuid DEFAULT gen_random_uuid(),
 	token bytea UNIQUE DEFAULT gen_random_bytes(64),
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
+
+	ip inet NOT NULL,
+	device text NOT NULL,
+
 	expiration_date timestamp NOT NULL DEFAULT (NOW() + interval '7d'),
 	revoked boolean DEFAULT FALSE NOT NULL,
+
 	CHECK(length(token) >= 64),
 	PRIMARY KEY(session_id)
 );

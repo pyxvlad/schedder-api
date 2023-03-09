@@ -81,18 +81,6 @@ func TestRegisterWithoutJson(t *testing.T) {
 	expect(t, http.StatusBadRequest, resp.StatusCode)
 }
 
-func expect[T comparable](t *testing.T, expected T, got T) {
-	if expected != got {
-		t.Fatalf("expected %#v, got %#v", expected, got)
-	}
-}
-
-func unexpect[T comparable](t *testing.T, unexpected T, got T) {
-	if unexpected == got {
-		t.Fatalf("unexpected %#v", unexpected)
-	}
-}
-
 func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 
 	api := BeginTx(t)
@@ -122,11 +110,6 @@ func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 }
 
 func TestRegisterWithPhone(t *testing.T) {
-	type Response struct {
-		schedder.PostAccountResponse
-		Error string `json:"error,omitempty"`
-	}
-
 	testdata := [][2]string{{"+40723123123", "+40723123123"}, {"0723123123", "+40723123123"}, {"+4 0 7 2 3 1 2 3 1 2 3", "+40723123123"}}
 
 	for _, v := range testdata {
@@ -152,7 +135,7 @@ func TestRegisterWithPhone(t *testing.T) {
 
 			resp := w.Result()
 
-			var response Response
+			var response schedder.PostAccountResponse
 			err = json.NewDecoder(resp.Body).Decode(&response)
 			if err != nil {
 				t.Fatal(err)
@@ -252,12 +235,14 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 
 	email := "mail@gmail.com"
 	password := "hackme"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	device := "schedder test"
+	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Email: email, Password: password, Device: device})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	req := httptest.NewRequest("POST", "/sessions", &buffer)
+	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
 	api.register_user_by_email(email, password)
@@ -296,12 +281,14 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 
 	phone := "+40743123123"
 	password := "hackme"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+	device := "schedder test"
+	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: phone, Password: password, Device: device})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	req := httptest.NewRequest("POST", "/sessions", &buffer)
+	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
 	api.register_user_by_phone(phone, password)
@@ -332,12 +319,14 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 
 	phone := "+40743123123"
 	password := "hackme"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+	device := "schedder test"
+	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: phone, Password: password, Device: device})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	req := httptest.NewRequest("POST", "/sessions", &buffer)
+	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
 	api.register_user_by_phone(phone, password+"bad")
@@ -345,7 +334,7 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 	api.ServeHTTP(w, req)
 	resp := w.Result()
 
-	var response Response
+	var response schedder.Response
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	expect(t, response.Error, "invalid password")
 	expect(t, http.StatusBadRequest, resp.StatusCode)
@@ -378,12 +367,13 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 
 			var buffer bytes.Buffer
 
-			err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: td.phone, Email: td.email, Password: "hackme"})
+			err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: td.phone, Email: td.email, Password: "hackme", Device: "schedder test"})
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			req := httptest.NewRequest("POST", "/sessions", &buffer)
+			req.RemoteAddr = "127.0.0.1"
 			w := httptest.NewRecorder()
 
 			api.ServeHTTP(w, req)
@@ -465,7 +455,6 @@ func TestGetSessionsForAccount(t *testing.T) {
 	type GetSessionResponse struct {
 		schedder.GetSessionsResponse
 		Error string
-
 	}
 	api := BeginTx(t)
 	defer api.Rollback()
@@ -509,7 +498,7 @@ func TestRevokeSession(t *testing.T) {
 	token := api.generate_token(email, password)
 	sessions := api.get_sessions(token)
 
-	req := httptest.NewRequest("DELETE", "/sessions/" + sessions[0].String(), nil)
+	req := httptest.NewRequest("DELETE", "/sessions/"+sessions[0].String(), nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -525,7 +514,7 @@ func TestRevokeSession(t *testing.T) {
 	expect(t, "", data["error"])
 	expect(t, http.StatusOK, resp.StatusCode)
 
-	req = httptest.NewRequest("DELETE", "/sessions/" + sessions[0].String(), nil)
+	req = httptest.NewRequest("DELETE", "/sessions/"+sessions[0].String(), nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w = httptest.NewRecorder()
 
@@ -554,12 +543,11 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 
 	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
 
-	req := httptest.NewRequest("DELETE", "/sessions/" + session_id, nil)
+	req := httptest.NewRequest("DELETE", "/sessions/"+session_id, nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, req)
-
 
 	resp := w.Result()
 
@@ -568,7 +556,6 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 	if err != nil && err.Error() != "EOF" {
 		t.Fatal(err)
 	}
-
 
 	expect(t, http.StatusBadRequest, resp.StatusCode)
 	expect(t, 1, len(data))

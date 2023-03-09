@@ -22,6 +22,10 @@ type API struct {
 	mux  *chi.Mux
 }
 
+type Response struct {
+	Error string `json:"error,omitempty"`
+}
+
 func New(conn database.DBTX) *API {
 	api := new(API)
 	api.dbtx = conn
@@ -83,14 +87,13 @@ func Run() {
 	}
 }
 
-type ResponseError struct {
-	Error string `json:"error,omitempty"`
-}
-
-func json_error(w http.ResponseWriter, statusCode int, message string) error {
+func json_error(w http.ResponseWriter, statusCode int, message string) {
 	w.WriteHeader(statusCode)
 	encoder := json.NewEncoder(w)
-	return encoder.Encode(ResponseError{message})
+	err := encoder.Encode(Response{Error: message})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
