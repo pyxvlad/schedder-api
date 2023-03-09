@@ -154,7 +154,7 @@ func (a *ApiTx) generate_token(email string, password string) (token string) {
 		a.t.Fatalf("generate_token: couldn't generate json")
 	}
 
-	req := httptest.NewRequest("POST", "/sessions", &b)
+	req := httptest.NewRequest("POST", "/accounts/self/sessions", &b)
 
 	req.RemoteAddr = "127.0.0.1"
 
@@ -201,7 +201,7 @@ func (a *ApiTx) get_sessions(token string) (session_ids []uuid.UUID) {
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{
 		{"POST", "/accounts"},
-		{"POST", "/sessions"},
+		{"POST", "/accounts/self/sessions"},
 	}
 
 	for _, v := range testdata {

@@ -3,7 +3,6 @@ package schedder
 import (
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"net"
 	"net/http"
 	"net/mail"
@@ -40,14 +39,14 @@ type GenerateTokenRequest struct {
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	Password string `json:"password"`
-	Device string `json:"device"`
+	Device   string `json:"device"`
 }
 
 type sessionResponse struct {
 	ID             uuid.UUID `json:"session_id"`
 	ExpirationDate time.Time `json:"expiration_date"`
-	IP net.IP `json:"ip"`
-	Device string `json:"device"`
+	IP             net.IP    `json:"ip"`
+	Device         string    `json:"device"`
 }
 
 type GetSessionsResponse struct {
@@ -58,15 +57,7 @@ type GetSessionsResponse struct {
 const BCRYPT_ROUNDS = 10
 
 func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	var account_request PostAccountRequest
-	err := decoder.Decode(&account_request)
-	if err != nil {
-		json_error(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-
-
+	account_request := r.Context().Value("json").(*PostAccountRequest)
 	raw_password := []byte(account_request.Password)
 
 	if len(raw_password) < 8 {
@@ -142,20 +133,12 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	encoder := json.NewEncoder(w)
-	encoder.Encode(resp)
+	json_resp(w, http.StatusCreated, resp)
 	return
 }
 
 func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	var token_request GenerateTokenRequest
-	err := decoder.Decode(&token_request)
-	if err != nil {
-		json_error(w, http.StatusBadRequest, "invalid json")
-		return
-	}
+	token_request := r.Context().Value("json").(*GenerateTokenRequest)
 
 	var ip pgtype.Inet
 	forwarded := r.Header.Get("X-FORWARDED-FOR")
@@ -166,11 +149,13 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		err := ip.Scan(r.RemoteAddr)
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
+			host = r.RemoteAddr
+		}
+		if err := ip.Scan(host); err != nil {
 			json_error(w, http.StatusBadRequest, "invalid IP, wtf")
-			panic("bro, wtf happened here")
-			return
+			panic("bro, wtf happened here: "+ err.Error())
 		}
 	}
 
@@ -178,7 +163,6 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		json_error(w, http.StatusBadRequest, "device name too short")
 		return
 	}
-
 
 	var resp GenerateTokenResponse
 	password := ""
@@ -203,13 +187,11 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(password), []byte(token_request.Password))
+	err := bcrypt.CompareHashAndPassword([]byte(password), []byte(token_request.Password))
 	if err != nil {
 		json_error(w, http.StatusBadRequest, "invalid password")
 		return
 	}
-
-	
 
 	//token, err := a.db.CreateSessionToken(r.Context(), resp.AccountID)
 	token, err := a.db.CreateSessionToken(r.Context(), database.CreateSessionTokenParams{AccountID: resp.AccountID, Ip: ip, Device: token_request.Device})
@@ -219,9 +201,7 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp.Token = base64.RawStdEncoding.EncodeToString(token)
-	w.WriteHeader(http.StatusCreated)
-	encoder := json.NewEncoder(w)
-	encoder.Encode(resp)
+	json_resp(w, http.StatusCreated, resp)
 	return
 }
 
@@ -242,12 +222,7 @@ func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
 		resp.Sessions = append(resp.Sessions, sessionResponse{r.SessionID, r.ExpirationDate, r.Ip.IPNet.IP, r.Device})
 	}
 
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(resp)
-	if err != nil {
-		json_error(w, http.StatusInternalServerError, "couldn't generate json")
-		return
-	}
+	json_resp(w, http.StatusOK, resp)
 }
 
 func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {

@@ -1,12 +1,17 @@
 package schedder
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"reflect"
+	"runtime"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -32,20 +37,50 @@ func New(conn database.DBTX) *API {
 	api.db = database.New(api.dbtx)
 	api.mux = chi.NewRouter()
 	api.mux.Route("/accounts", func(r chi.Router) {
-		r.Post("/", api.PostAccount)
+		r.With(WithJson[PostAccountRequest]).Post("/", api.PostAccount)
 		r.Route("/self", func(r chi.Router) {
-			r.Use(api.AuthenticatedEndpoint)
-			r.Get("/sessions", api.GetSessionsForAccount)
+			r.Route("/sessions", func(r chi.Router) {
+				r.With(WithJson[GenerateTokenRequest]).Post("/", api.GenerateToken)
+				r.With(api.AuthenticatedEndpoint).Get("/", api.GetSessionsForAccount)
+				r.Route("/{session_id}", func(r chi.Router) {
+					r.Use(api.AuthenticatedEndpoint)
+					r.Use(api.WithSessionId)
+					r.Delete("/", api.RevokeSession)
+				})
+			})
 		})
+		//r.Use(api.AuthenticatedEndpoint)
+		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
-	api.mux.Route("/sessions", func(r chi.Router) {
-		r.Post("/", api.GenerateToken)
-		r.Route("/{session_id}", func(r chi.Router) {
-			r.Use(api.AuthenticatedEndpoint)
-			r.Use(api.WithSessionId)
-			r.Delete("/", api.RevokeSession)
-		})
-	})
+
+	b := bytes.Buffer{}
+
+	var f func(pattern string, r chi.Routes)
+
+	f = func(pattern string, r chi.Routes) {
+		for _, route := range r.Routes() {
+			pat := strings.TrimSuffix(route.Pattern, "/*")
+			pat = pattern + pat
+			if route.SubRoutes == nil {
+				for k, v := range route.Handlers {
+					fpn := runtime.FuncForPC(reflect.ValueOf(v).Pointer()).Name()
+					splits := strings.Split(fpn, ".")
+					fpn = splits[len(splits)-1]
+					fpn = strings.TrimSuffix(fpn, "-fm")
+					request := fmt.Sprintf("%s %s %s\n", k, fpn, pat)
+					b.WriteString(request)
+				}
+			} else {
+				sub := route.SubRoutes
+				f(pat, sub)
+			}
+		}
+	}
+
+	f("", api.mux)
+
+	ioutil.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
+
 	return api
 }
 
@@ -88,13 +123,17 @@ func Run() {
 }
 
 func json_error(w http.ResponseWriter, statusCode int, message string) {
+	json_resp(w, statusCode, Response{Error: message})
+}
+
+func json_resp[T any](w http.ResponseWriter, statusCode int, response T) {
 	w.WriteHeader(statusCode)
-	encoder := json.NewEncoder(w)
-	err := encoder.Encode(Response{Error: message})
+	err := json.NewEncoder(w).Encode(response)
 	if err != nil {
 		panic(err)
 	}
 }
+
 
 func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +177,21 @@ func (a *API) WithSessionId(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), "session_id", session_id)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func WithJson[T any](next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+		request := new(T)
+		err := decoder.Decode(request)
+		if err != nil {
+			json_error(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		ctx := context.WithValue(r.Context(), "json", request)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
