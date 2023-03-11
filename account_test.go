@@ -248,7 +248,7 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
-	api.register_user_by_email(email, password)
+	api.registerUserByEmail(email, password)
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -295,7 +295,7 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:1234"
 	w := httptest.NewRecorder()
 
-	api.register_user_by_phone(phone, password)
+	api.registerUserByPhone(phone, password)
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -334,7 +334,7 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
-	api.register_user_by_phone(phone, password+"bad")
+	api.registerUserByPhone(phone, password+"bad")
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -402,8 +402,8 @@ func TestAuthMiddleware(t *testing.T) {
 
 	email := "test@example.com"
 	password := "hackmenow"
-	api.register_user_by_email(email, password)
-	token := api.generate_token(email, password)
+	api.registerUserByEmail(email, password)
+	token := api.generateToken(email, password)
 
 	endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 
@@ -470,8 +470,8 @@ func TestGetSessionsForAccount(t *testing.T) {
 
 	email := "test@example.com"
 	password := "hackmenow"
-	api.register_user_by_email(email, password)
-	token := api.generate_token(email, password)
+	api.registerUserByEmail(email, password)
+	token := api.generateToken(email, password)
 
 	req := httptest.NewRequest("GET", "/accounts/self/sessions", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -504,9 +504,9 @@ func TestRevokeSession(t *testing.T) {
 
 	email := "test@example.com"
 	password := "hackmenow"
-	api.register_user_by_email(email, password)
-	token := api.generate_token(email, password)
-	sessions := api.get_sessions(token)
+	api.registerUserByEmail(email, password)
+	token := api.generateToken(email, password)
+	sessions := api.getSessions(token)
 
 	req := httptest.NewRequest("DELETE", "/accounts/self/sessions/"+sessions[0].String(), nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -548,8 +548,8 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 
 	email := "test@example.com"
 	password := "hackmenow"
-	api.register_user_by_email(email, password)
-	token := api.generate_token(email, password)
+	api.registerUserByEmail(email, password)
+	token := api.generateToken(email, password)
 
 	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
 

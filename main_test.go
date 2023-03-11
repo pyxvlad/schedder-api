@@ -24,18 +24,18 @@ var conn *pgxpool.Pool
 func TestMain(m *testing.M) {
 	var err error
 
-	pg_uri := schedder.RequiredEnv("SCHEDDER_TEST_POSTGRES", "postgres://test_user@localhost/schedder_test")
-	std_db, err := sql.Open("pgx", pg_uri)
+	pgURI := schedder.RequiredEnv("SCHEDDER_TEST_POSTGRES", "postgres://test_user@localhost/schedder_test")
+	stdDB, err := sql.Open("pgx", pgURI)
 	if err != nil {
 		panic(err)
 	}
-	database.ResetDB(std_db)
-	database.MigrateDB(std_db)
-	if err := std_db.Close(); err != nil {
+	database.ResetDB(stdDB)
+	database.MigrateDB(stdDB)
+	if err = stdDB.Close(); err != nil {
 		panic(err)
 	}
 
-	conn, err = pgxpool.Connect(context.Background(), pg_uri)
+	conn, err = pgxpool.Connect(context.Background(), pgURI)
 	if err != nil {
 		panic(err)
 	}
@@ -54,7 +54,7 @@ func expect[T comparable](t *testing.T, expected T, got T) {
 		if err != nil {
 			panic(err)
 		}
-		file = strings.TrimPrefix(file, wd + "/")
+		file = strings.TrimPrefix(file, wd+"/")
 
 		t.Fatalf("%s:%d: expected %#v, got %#v\n", file, line, expected, got)
 	}
@@ -71,39 +71,39 @@ func unexpect[T comparable](t *testing.T, unexpected T, got T) {
 		if err != nil {
 			panic(err)
 		}
-		file = strings.TrimPrefix(file, wd + "/")
+		file = strings.TrimPrefix(file, wd+"/")
 
 		t.Fatalf("%s:%d: unexpected %#v, got %#v\n", file, line, unexpected, got)
 	}
 }
 
-type ApiTx struct {
+type ApiTX struct {
 	*schedder.API
 	tx pgx.Tx
 	t  *testing.T
 }
 
-func BeginTx(t *testing.T) ApiTx {
+func BeginTx(t *testing.T) ApiTX {
 	tx, err := conn.BeginTx(context.Background(), pgx.TxOptions{})
 	if err != nil {
 		t.Fatalf("testing: BeginTx: %e", err)
 	}
 
-	var api ApiTx
+	var api ApiTX
 	api.API = schedder.New(tx)
 	api.tx = tx
 	api.t = t
 	return api
 }
 
-func (a *ApiTx) Rollback() {
+func (a *ApiTX) Rollback() {
 	err := a.tx.Rollback(context.Background())
 	if err != nil {
 		a.t.Fatalf("testing: RollbackTx: %e", err)
 	}
 }
 
-func (a *ApiTx) register_user_by_email(email string, password string) {
+func (a *ApiTX) registerUserByEmail(email string, password string) {
 	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
@@ -114,18 +114,15 @@ func (a *ApiTx) register_user_by_email(email string, password string) {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	data := make(map[string]string)
+	data := schedder.Response{}
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
 	}
-
-	if json_err, has_error := data["error"]; has_error {
-		a.t.Fatalf("register_user: %s", json_err)
-	}
+	expect(a.t, "", data.Error)
 }
 
-func (a *ApiTx) register_user_by_phone(phone string, password string) {
+func (a *ApiTX) registerUserByPhone(phone string, password string) {
 	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
@@ -136,16 +133,16 @@ func (a *ApiTx) register_user_by_phone(phone string, password string) {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	data := make(map[string]string)
+	data := schedder.Response{}
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
 	}
 
-	expect(a.t, "", data["error"])
+	expect(a.t, "", data.Error)
 }
 
-func (a *ApiTx) generate_token(email string, password string) (token string) {
+func (a *ApiTX) generateToken(email string, password string) (token string) {
 	req_data := schedder.GenerateTokenRequest{Email: email, Password: password, Device: "schedder testing"}
 
 	var b bytes.Buffer
@@ -178,8 +175,7 @@ func (a *ApiTx) generate_token(email string, password string) (token string) {
 	return
 }
 
-
-func (a *ApiTx) get_sessions(token string) (session_ids []uuid.UUID) {
+func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
 	req := httptest.NewRequest("GET", "/accounts/self/sessions", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -197,7 +193,6 @@ func (a *ApiTx) get_sessions(token string) (session_ids []uuid.UUID) {
 	}
 	return session_ids
 }
-
 
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{

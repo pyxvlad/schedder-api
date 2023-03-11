@@ -16,9 +16,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// PostAccountRequest represents the parameters that the account creation
+// endpoint expects.
 type PostAccountRequest struct {
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	// Email for the newly created account, i.e. user@example.com
+	Email string `json:"email"`
+	// Phone number as a string, i.e. "+40743123123"
+	Phone string `json:"phone"`
+	// The password that the user wants to use
 	Password string `json:"password"`
 }
 
@@ -54,60 +59,59 @@ type GetSessionsResponse struct {
 	Sessions []sessionResponse `json:"sessions"`
 }
 
-const BCRYPT_ROUNDS = 10
+const BcryptRounds = 10
 
 func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
-	account_request := r.Context().Value("json").(*PostAccountRequest)
-	raw_password := []byte(account_request.Password)
+	accountRequest := r.Context().Value(CtxJSON).(*PostAccountRequest)
+	rawPassword := []byte(accountRequest.Password)
 
-	if (len(raw_password) < 8) || (len(raw_password) > 64) {
-		json_error(w, http.StatusBadRequest, "password too short")
+	if (len(rawPassword) < 8) || (len(rawPassword) > 64) {
+		jsonError(w, http.StatusBadRequest, "password too short")
 		return
 	}
 
 	var resp PostAccountResponse
-	password_bytes, err := bcrypt.GenerateFromPassword([]byte(account_request.Password), BCRYPT_ROUNDS)
+	passwordBytes, err := bcrypt.GenerateFromPassword([]byte(accountRequest.Password), BcryptRounds)
 	if err != nil {
-		json_error(w, http.StatusInternalServerError, err.Error())
+		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	password := string(password_bytes)
+	password := string(passwordBytes)
 
-	if account_request.Email != "" {
-		_, err := mail.ParseAddress(account_request.Email)
+	if accountRequest.Email != "" {
+		_, err := mail.ParseAddress(accountRequest.Email)
 		if err != nil {
-			json_error(w, http.StatusBadRequest, err.Error())
+			jsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		cawep := database.CreateAccountWithEmailParams{
-			Email:    sql.NullString{String: account_request.Email, Valid: true},
+			Email:    sql.NullString{String: accountRequest.Email, Valid: true},
 			Password: password,
 		}
 		row, err := a.db.CreateAccountWithEmail(r.Context(), cawep)
 		if err != nil {
-			json_error(w, http.StatusInternalServerError, err.Error())
+			jsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
-	} else if account_request.Phone != "" {
+	} else if accountRequest.Phone != "" {
 		phone := strings.Map(func(r rune) rune {
 			if unicode.IsDigit(r) || r == '+' {
 				return r
-			} else {
-				return -1
 			}
-		}, account_request.Phone)
+			return -1
+		}, accountRequest.Phone)
 
 		if !strings.HasPrefix(phone, "+") && (strings.HasPrefix(phone, "07") || strings.HasPrefix(phone, "02")) {
 			phone = "+4" + phone
 		}
 
 		if len(phone) != 12 {
-			json_error(w, http.StatusBadRequest, "phone too short/long")
+			jsonError(w, http.StatusBadRequest, "phone too short/long")
 			return
 		}
 
@@ -117,30 +121,29 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		row, err := a.db.CreateAccountWithPhone(r.Context(), cawpp)
 		if err != nil {
-			json_error(w, http.StatusInternalServerError, err.Error())
+			jsonError(w, http.StatusInternalServerError, err.Error())
 		}
 
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
 	} else {
-		json_error(w, http.StatusBadRequest, "expected phone or email")
+		jsonError(w, http.StatusBadRequest, "expected phone or email")
 		return
 	}
 
-	json_resp(w, http.StatusCreated, resp)
-	return
+	jsonResp(w, http.StatusCreated, resp)
 }
 
 func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
-	token_request := r.Context().Value("json").(*GenerateTokenRequest)
+	tokenRequest := r.Context().Value(CtxJSON).(*GenerateTokenRequest)
 
 	var ip pgtype.Inet
 	forwarded := r.Header.Get("X-FORWARDED-FOR")
 	if forwarded != "" {
 		err := ip.Scan(forwarded)
 		if err != nil {
-			json_error(w, http.StatusBadRequest, "invalid X-FORWARDED-FOR")
+			jsonError(w, http.StatusBadRequest, "invalid X-FORWARDED-FOR")
 			return
 		}
 	} else {
@@ -149,63 +152,62 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 			host = r.RemoteAddr
 		}
 		if err := ip.Scan(host); err != nil {
-			json_error(w, http.StatusBadRequest, "invalid IP, wtf")
+			jsonError(w, http.StatusBadRequest, "invalid IP, wtf")
 			panic("bro, wtf happened here: " + err.Error())
 		}
 	}
 
-	if len(token_request.Device) < 8 {
-		json_error(w, http.StatusBadRequest, "device name too short")
+	if len(tokenRequest.Device) < 8 {
+		jsonError(w, http.StatusBadRequest, "device name too short")
 		return
 	}
 
 	var resp GenerateTokenResponse
 	password := ""
-	if token_request.Email != "" {
-		row, err := a.db.GetPasswordByEmail(r.Context(), sql.NullString{String: token_request.Email, Valid: true})
+	if tokenRequest.Email != "" {
+		row, err := a.db.GetPasswordByEmail(r.Context(), sql.NullString{String: tokenRequest.Email, Valid: true})
 		password = row.Password
 		resp.AccountID = row.AccountID
 		if err != nil {
-			json_error(w, http.StatusBadRequest, "no user with email")
+			jsonError(w, http.StatusBadRequest, "no user with email")
 			return
 		}
-	} else if token_request.Phone != "" {
-		row, err := a.db.GetPasswordByPhone(r.Context(), sql.NullString{String: token_request.Phone, Valid: true})
+	} else if tokenRequest.Phone != "" {
+		row, err := a.db.GetPasswordByPhone(r.Context(), sql.NullString{String: tokenRequest.Phone, Valid: true})
 		password = row.Password
 		resp.AccountID = row.AccountID
 		if err != nil {
-			json_error(w, http.StatusBadRequest, "no user with phone")
+			jsonError(w, http.StatusBadRequest, "no user with phone")
 			return
 		}
 	} else {
-		json_error(w, http.StatusBadRequest, "expected phone or email")
+		jsonError(w, http.StatusBadRequest, "expected phone or email")
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(password), []byte(token_request.Password))
+	err := bcrypt.CompareHashAndPassword([]byte(password), []byte(tokenRequest.Password))
 	if err != nil {
-		json_error(w, http.StatusBadRequest, "invalid password")
+		jsonError(w, http.StatusBadRequest, "invalid password")
 		return
 	}
 
 	//token, err := a.db.CreateSessionToken(r.Context(), resp.AccountID)
-	token, err := a.db.CreateSessionToken(r.Context(), database.CreateSessionTokenParams{AccountID: resp.AccountID, Ip: ip, Device: token_request.Device})
+	token, err := a.db.CreateSessionToken(r.Context(), database.CreateSessionTokenParams{AccountID: resp.AccountID, Ip: ip, Device: tokenRequest.Device})
 	if err != nil {
-		json_error(w, http.StatusInternalServerError, "couldn't generate token"+err.Error())
+		jsonError(w, http.StatusInternalServerError, "couldn't generate token"+err.Error())
 		return
 	}
 
 	resp.Token = base64.RawStdEncoding.EncodeToString(token)
-	json_resp(w, http.StatusCreated, resp)
-	return
+	jsonResp(w, http.StatusCreated, resp)
 }
 
 func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
-	account_id := r.Context().Value("account_id").(uuid.UUID)
+	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
 
-	rows, err := a.db.GetSessionsForAccount(r.Context(), account_id)
+	rows, err := a.db.GetSessionsForAccount(r.Context(), accountID)
 	if err != nil {
-		json_error(w, http.StatusInternalServerError, "couldn't get sessions")
+		jsonError(w, http.StatusInternalServerError, "couldn't get sessions")
 		return
 	}
 
@@ -217,23 +219,22 @@ func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
 		resp.Sessions = append(resp.Sessions, sessionResponse{r.SessionID, r.ExpirationDate, r.Ip.IPNet.IP, r.Device})
 	}
 
-	json_resp(w, http.StatusOK, resp)
+	jsonResp(w, http.StatusOK, resp)
 }
 
 func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {
-	account_id := r.Context().Value("account_id").(uuid.UUID)
-	session_id := r.Context().Value("session_id").(uuid.UUID)
+	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+	sessionID := r.Context().Value(CtxSessionID).(uuid.UUID)
 
-	affected_rows, err := a.db.RevokeSessionForAccount(r.Context(), database.RevokeSessionForAccountParams{SessionID: session_id, AccountID: account_id})
-	if affected_rows != 1 {
-		json_error(w, http.StatusBadRequest, "invalid session")
+	affectedRows, err := a.db.RevokeSessionForAccount(r.Context(), database.RevokeSessionForAccountParams{SessionID: sessionID, AccountID: accountID})
+	if affectedRows != 1 {
+		jsonError(w, http.StatusBadRequest, "invalid session")
 		return
 	}
 	if err != nil {
-		json_error(w, http.StatusInternalServerError, "couldn't revoke session")
+		jsonError(w, http.StatusInternalServerError, "couldn't revoke session")
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	return
 }

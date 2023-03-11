@@ -1,3 +1,4 @@
+// Package schedder implements the backend API for the schedder project.
 package schedder
 
 import (
@@ -12,10 +13,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v4/stdlib" // enable the stdlib adapter of pgx, used for goose migrations
 	"gitlab.com/vlad.anghel/schedder-api/database"
 )
 
+// CtxKey is used as the key for context values
+type CtxKey int
+
+const (
+	CtxSessionID = CtxKey(1)
+	CtxAccountID = CtxKey(2)
+	CtxJSON      = CtxKey(3)
+)
+
+// Struct keeping track of all the states, pretty much a singleton
 type API struct {
 	db   *database.Queries
 	dbtx database.DBTX
@@ -32,14 +43,14 @@ func New(conn database.DBTX) *API {
 	api.db = database.New(api.dbtx)
 	api.mux = chi.NewRouter()
 	api.mux.Route("/accounts", func(r chi.Router) {
-		r.With(WithJson[PostAccountRequest]).Post("/", api.PostAccount)
+		r.With(WithJSON[PostAccountRequest]).Post("/", api.PostAccount)
 		r.Route("/self", func(r chi.Router) {
 			r.Route("/sessions", func(r chi.Router) {
-				r.With(WithJson[GenerateTokenRequest]).Post("/", api.GenerateToken)
+				r.With(WithJSON[GenerateTokenRequest]).Post("/", api.GenerateToken)
 				r.With(api.AuthenticatedEndpoint).Get("/", api.GetSessionsForAccount)
-				r.Route("/{session_id}", func(r chi.Router) {
+				r.Route("/{sessionID}", func(r chi.Router) {
 					r.Use(api.AuthenticatedEndpoint)
-					r.Use(api.WithSessionId)
+					r.Use(api.WithSessionID)
 					r.Delete("/", api.RevokeSession)
 				})
 			})
@@ -92,17 +103,17 @@ func RequiredEnv(name string, example string) string {
 }
 
 func Run() {
-	pg_uri := RequiredEnv("SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db")
-	std_db, err := sql.Open("pgx", pg_uri)
+	postgresURI := RequiredEnv("SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db")
+	stdDB, err := sql.Open("pgx", postgresURI)
 	if err != nil {
 		panic(err)
 	}
-	database.MigrateDB(std_db)
-	if err := std_db.Close(); err != nil {
+	database.MigrateDB(stdDB)
+	if err = stdDB.Close(); err != nil {
 		panic(err)
 	}
 
-	conn, err := pgx.Connect(context.Background(), pg_uri)
+	conn, err := pgx.Connect(context.Background(), postgresURI)
 	if err != nil {
 		panic(err)
 	}
@@ -117,11 +128,11 @@ func Run() {
 	}
 }
 
-func json_error(w http.ResponseWriter, statusCode int, message string) {
-	json_resp(w, statusCode, Response{Error: message})
+func jsonError(w http.ResponseWriter, statusCode int, message string) {
+	jsonResp(w, statusCode, Response{Error: message})
 }
 
-func json_resp[T any](w http.ResponseWriter, statusCode int, response T) {
+func jsonResp[T any](w http.ResponseWriter, statusCode int, response T) {
 	w.WriteHeader(statusCode)
 	err := json.NewEncoder(w).Encode(response)
 	if err != nil {
@@ -129,64 +140,63 @@ func json_resp[T any](w http.ResponseWriter, statusCode int, response T) {
 	}
 }
 
-
 func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		parts := strings.Split(auth, " ")
 		if parts[0] != "Bearer" {
-			json_error(w, http.StatusUnauthorized, "invalid token")
+			jsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
-		token_string := parts[1]
-		token, err := base64.RawStdEncoding.DecodeString(token_string)
+		tokenString := parts[1]
+		token, err := base64.RawStdEncoding.DecodeString(tokenString)
 		if err != nil {
-			json_error(w, http.StatusUnauthorized, "invalid token")
+			jsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
-		account_id, err := a.db.GetSessionAccount(r.Context(), token)
+		accountID, err := a.db.GetSessionAccount(r.Context(), token)
 		if err != nil {
-			json_error(w, http.StatusUnauthorized, "invalid token")
+			jsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
-		r = r.WithContext(context.WithValue(r.Context(), "account_id", account_id))
+		r = r.WithContext(context.WithValue(r.Context(), CtxAccountID, accountID))
 		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
 }
 
-func (a *API) WithSessionId(next http.Handler) http.Handler {
+func (a *API) WithSessionID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session_string := chi.URLParam(r, "session_id")
-		if session_string == "" {
-			json_error(w, http.StatusNotFound, "invalid session")
+		sessionString := chi.URLParam(r, "sessionID")
+		if sessionString == "" {
+			jsonError(w, http.StatusNotFound, "invalid session")
 			return
 		}
 
-		session_id, err := uuid.Parse(session_string)
+		sessionID, err := uuid.Parse(sessionString)
 		if err != nil {
-			json_error(w, http.StatusNotFound, "invalid session")
+			jsonError(w, http.StatusNotFound, "invalid session")
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "session_id", session_id)
+		ctx := context.WithValue(r.Context(), CtxSessionID, sessionID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func WithJson[T any](next http.Handler) http.Handler {
+func WithJSON[T any](next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
 		request := new(T)
 		err := decoder.Decode(request)
 		if err != nil {
-			json_error(w, http.StatusBadRequest, "invalid json")
+			jsonError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		ctx := context.WithValue(r.Context(), "json", request)
+		ctx := context.WithValue(r.Context(), CtxJSON, request)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
