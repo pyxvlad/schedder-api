@@ -1,17 +1,12 @@
 package schedder
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"reflect"
-	"runtime"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -53,33 +48,33 @@ func New(conn database.DBTX) *API {
 		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
 
-	b := bytes.Buffer{}
+	//b := bytes.Buffer{}
 
-	var f func(pattern string, r chi.Routes)
+	//var f func(pattern string, r chi.Routes)
 
-	f = func(pattern string, r chi.Routes) {
-		for _, route := range r.Routes() {
-			pat := strings.TrimSuffix(route.Pattern, "/*")
-			pat = pattern + pat
-			if route.SubRoutes == nil {
-				for k, v := range route.Handlers {
-					fpn := runtime.FuncForPC(reflect.ValueOf(v).Pointer()).Name()
-					splits := strings.Split(fpn, ".")
-					fpn = splits[len(splits)-1]
-					fpn = strings.TrimSuffix(fpn, "-fm")
-					request := fmt.Sprintf("%s %s %s\n", k, fpn, pat)
-					b.WriteString(request)
-				}
-			} else {
-				sub := route.SubRoutes
-				f(pat, sub)
-			}
-		}
-	}
+	//f = func(pattern string, r chi.Routes) {
+	//	for _, route := range r.Routes() {
+	//		pat := strings.TrimSuffix(route.Pattern, "/*")
+	//		pat = pattern + pat
+	//		if route.SubRoutes == nil {
+	//			for k, v := range route.Handlers {
+	//				fpn := runtime.FuncForPC(reflect.ValueOf(v).Pointer()).Name()
+	//				splits := strings.Split(fpn, ".")
+	//				fpn = splits[len(splits)-1]
+	//				fpn = strings.TrimSuffix(fpn, "-fm")
+	//				request := fmt.Sprintf("%s %s %s\n", k, fpn, pat)
+	//				b.WriteString(request)
+	//			}
+	//		} else {
+	//			sub := route.SubRoutes
+	//			f(pat, sub)
+	//		}
+	//	}
+	//}
 
-	f("", api.mux)
+	//f("", api.mux)
 
-	ioutil.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
+	//ioutil.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
 
 	return api
 }

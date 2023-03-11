@@ -13,6 +13,7 @@ import (
 )
 
 func TestRegisterWithEmail(t *testing.T) {
+	t.Parallel()
 
 	api := BeginTx(t)
 	defer api.Rollback()
@@ -51,6 +52,7 @@ func TestRegisterWithEmail(t *testing.T) {
 }
 
 func TestRegisterWithoutJson(t *testing.T) {
+	t.Parallel()
 
 	api := BeginTx(t)
 	defer api.Rollback()
@@ -81,6 +83,7 @@ func TestRegisterWithoutJson(t *testing.T) {
 }
 
 func TestRegisterWithoutEmailOrPhone(t *testing.T) {
+	t.Parallel()
 	api := BeginTx(t)
 	defer api.Rollback()
 
@@ -105,19 +108,23 @@ func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 }
 
 func TestRegisterWithPhone(t *testing.T) {
+	t.Parallel()
 	testdata := [][2]string{{"+40723123123", "+40723123123"}, {"0723123123", "+40723123123"}, {"+4 0 7 2 3 1 2 3 1 2 3", "+40723123123"}}
 
 	for _, v := range testdata {
+		loop_data := new([2]string)
+		copy(loop_data[:], v[:])
 		t.Run(v[0], func(t *testing.T) {
-			//t.Parallel()
+			data := *loop_data
+			t.Parallel()
 
 			api := BeginTx(t)
 			defer api.Rollback()
 
 			var buffer bytes.Buffer
 
-			phone := v[0]
-			expected := v[1]
+			phone := data[0]
+			expected := data[1]
 			password := "hackmenow"
 			err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
 			if err != nil {
@@ -143,7 +150,7 @@ func TestRegisterWithPhone(t *testing.T) {
 	}
 }
 func TestRegisterWithShortPhone(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 
 	api := BeginTx(t)
 	defer api.Rollback()
@@ -218,6 +225,7 @@ func FuzzRegister_BadEmails(f *testing.F) {
 }
 
 func TestGenerateTokenWithEmail(t *testing.T) {
+	t.Parallel()
 	type Response struct {
 		schedder.PostAccountResponse
 		Error string `json:"error,omitempty"`
@@ -264,6 +272,7 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 }
 
 func TestGenerateTokenWithPhone(t *testing.T) {
+	t.Parallel()
 	type Response struct {
 		schedder.GenerateTokenResponse
 		Error string `json:"error,omitempty"`
@@ -302,6 +311,7 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 }
 
 func TestGenerateTokenWithBadPassword(t *testing.T) {
+	t.Parallel()
 	type Response struct {
 		schedder.PostAccountResponse
 		Error string `json:"error,omitempty"`
@@ -336,6 +346,7 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 }
 
 func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
+	t.Parallel()
 	type TestData struct {
 		phone string
 		email string
@@ -385,6 +396,7 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 }
 
 func TestAuthMiddleware(t *testing.T) {
+	t.Parallel()
 	api := BeginTx(t)
 	defer api.Rollback()
 
@@ -412,6 +424,7 @@ func TestAuthMiddleware(t *testing.T) {
 }
 
 func TestAuthMiddlewareWithBadToken(t *testing.T) {
+	t.Parallel()
 	testdata := []string{"bad_token", "k6CVEMpWIHDkaZ+fmmZl4ApE+KfpO3DDGHdR7B3Ql6Uwt4zJpnUnlmNHPPVlDoHYTTWnWoEQcC1tyYjKD89mmw", "not-bearer"}
 
 	for _, v := range testdata {
@@ -447,6 +460,7 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 }
 
 func TestGetSessionsForAccount(t *testing.T) {
+	t.Parallel()
 	type GetSessionResponse struct {
 		schedder.GetSessionsResponse
 		Error string
@@ -484,6 +498,7 @@ func TestGetSessionsForAccount(t *testing.T) {
 }
 
 func TestRevokeSession(t *testing.T) {
+	t.Parallel()
 	api := BeginTx(t)
 	defer api.Rollback()
 
@@ -527,6 +542,7 @@ func TestRevokeSession(t *testing.T) {
 }
 
 func TestRevokeSessionWithBadSessionId(t *testing.T) {
+	t.Parallel()
 	api := BeginTx(t)
 	defer api.Rollback()
 

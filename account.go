@@ -60,13 +60,8 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 	account_request := r.Context().Value("json").(*PostAccountRequest)
 	raw_password := []byte(account_request.Password)
 
-	if len(raw_password) < 8 {
+	if (len(raw_password) < 8) || (len(raw_password) > 64) {
 		json_error(w, http.StatusBadRequest, "password too short")
-		return
-	}
-
-	if len(raw_password) > 64 {
-		json_error(w, http.StatusBadRequest, "password too long")
 		return
 	}
 
@@ -155,7 +150,7 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := ip.Scan(host); err != nil {
 			json_error(w, http.StatusBadRequest, "invalid IP, wtf")
-			panic("bro, wtf happened here: "+ err.Error())
+			panic("bro, wtf happened here: " + err.Error())
 		}
 	}
 

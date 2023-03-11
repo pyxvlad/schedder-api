@@ -8,17 +8,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
-	"runtime"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"gitlab.com/vlad.anghel/schedder-api"
 	"gitlab.com/vlad.anghel/schedder-api/database"
 )
 
-var conn *pgx.Conn
+var conn *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	var err error
@@ -34,7 +35,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	conn, err = pgx.Connect(context.Background(), pg_uri)
+	conn, err = pgxpool.Connect(context.Background(), pg_uri)
 	if err != nil {
 		panic(err)
 	}
