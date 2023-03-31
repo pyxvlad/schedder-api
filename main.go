@@ -59,6 +59,11 @@ func New(conn database.DBTX) *API {
 		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
 
+	api.mux.Route("/tenants", func(r chi.Router) {
+		r.With(WithJSON[CreateTenantRequest]).With(api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
+	})
+
+
 	//b := bytes.Buffer{}
 
 	//var f func(pattern string, r chi.Routes)
@@ -88,6 +93,10 @@ func New(conn database.DBTX) *API {
 	//ioutil.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
 
 	return api
+}
+
+func (a * API) GetMux() *chi.Mux{
+	return a.mux
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {

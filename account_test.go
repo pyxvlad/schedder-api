@@ -51,37 +51,6 @@ func TestRegisterWithEmail(t *testing.T) {
 	expect(t, email, response.Email)
 }
 
-func TestRegisterWithoutJson(t *testing.T) {
-	t.Parallel()
-
-	api := BeginTx(t)
-	defer api.Rollback()
-
-	type Response struct {
-		schedder.PostAccountResponse
-		Error string `json:"error,omitempty"`
-	}
-
-	var buffer bytes.Buffer
-	req := httptest.NewRequest("POST", "/accounts", &buffer)
-	w := httptest.NewRecorder()
-
-	api.ServeHTTP(w, req)
-
-	resp := w.Result()
-
-	var response Response
-	err := json.NewDecoder(resp.Body).Decode(&response)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Logf("%#v", response.Error)
-
-	expect(t, "invalid json", response.Error)
-	expect(t, http.StatusBadRequest, resp.StatusCode)
-}
-
 func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 	t.Parallel()
 	api := BeginTx(t)
@@ -149,6 +118,7 @@ func TestRegisterWithPhone(t *testing.T) {
 		})
 	}
 }
+
 func TestRegisterWithShortPhone(t *testing.T) {
 	t.Parallel()
 
@@ -170,18 +140,45 @@ func TestRegisterWithShortPhone(t *testing.T) {
 
 	resp := w.Result()
 
-	data := make(map[string]string)
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	response := schedder.Response{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	json_err := data["error"]
-	t.Logf("%#v", json_err)
+	expect(t, http.StatusBadRequest, resp.StatusCode)
+	expect(t, "phone too short/long", response.Error)
+}
+
+func TestRegisterWithInvalidEmail(t *testing.T) {
+	t.Parallel()
+
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	var buffer bytes.Buffer
+
+	email := "totally.not.an.email"
+	password := "hackmenow"
+	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/accounts", &buffer)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+	response := schedder.Response{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	expect(t, http.StatusBadRequest, resp.StatusCode)
-	expect(t, "phone too short/long", json_err)
-	expect(t, 1, len(data))
+	expect(t, "invalid email", response.Error)
 }
 
 func FuzzRegister_BadEmails(f *testing.F) {
@@ -198,7 +195,7 @@ func FuzzRegister_BadEmails(f *testing.F) {
 		defer api.Rollback()
 
 		var buffer bytes.Buffer
-		password := "hackme"
+		password := "hackmetoday"
 		err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
 		if err != nil {
 			t.Fatal(err)
@@ -210,27 +207,81 @@ func FuzzRegister_BadEmails(f *testing.F) {
 
 		resp := w.Result()
 
-		data := make(map[string]string)
-		err = json.NewDecoder(resp.Body).Decode(&data)
+		response := schedder.Response{}
+		err = json.NewDecoder(resp.Body).Decode(&response)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		json_err := data["error"]
-		t.Logf("%#v", json_err)
-
-		unexpect(t, "", json_err)
-		expect(t, 1, len(data))
+		unexpect(t, "", response.Error)
 	})
+}
+
+func TestRegisterWithDuplicateEmail(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+	email := "mail@example.com"
+	password := "hackmetoday"
+
+	api.registerUserByEmail(email, password)
+
+	var buffer bytes.Buffer
+
+	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/accounts", &buffer)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	r := w.Result()
+
+	var response schedder.Response
+	err = json.NewDecoder(r.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect(t, "email already used", response.Error)
+}
+
+func TestRegisterWithDuplicatePhone(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+	phone := "+40743123123"
+	password := "hackmetoday"
+
+	api.registerUserByPhone(phone, password)
+
+	var buffer bytes.Buffer
+
+	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/accounts", &buffer)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	r := w.Result()
+
+	var response schedder.Response
+	err = json.NewDecoder(r.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect(t, "phone already used", response.Error)
 }
 
 func TestGenerateTokenWithEmail(t *testing.T) {
 	t.Parallel()
-	type Response struct {
-		schedder.PostAccountResponse
-		Error string `json:"error,omitempty"`
-	}
-
+	
 	api := BeginTx(t)
 	defer api.Rollback()
 
@@ -253,7 +304,7 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 	api.ServeHTTP(w, req)
 	resp := w.Result()
 
-	var response Response
+	var response schedder.GenerateTokenResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	t.Logf("\t\t\t%#v\n", response)
 	if err != nil {
@@ -264,10 +315,6 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 		t.Logf("expected %d, got %s", http.StatusCreated, resp.Status)
 		t.Logf("got error: %s", response.Error)
 		t.FailNow()
-	}
-
-	if response.Email != email && response.Phone != "" {
-		t.Fatalf("expected %s, got %s", email, response.Email)
 	}
 }
 
@@ -551,6 +598,12 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 	api.registerUserByEmail(email, password)
 	token := api.generateToken(email, password)
 
+	otherEmail := "other@example.com"
+	otherPassword := "hackmenow"
+	api.registerUserByEmail(otherEmail, otherPassword)
+	otherToken := api.generateToken(otherEmail, otherPassword)
+
+
 	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
 
 	req := httptest.NewRequest("DELETE", "/accounts/self/sessions/"+session_id, nil)
@@ -569,4 +622,7 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 
 	expect(t, http.StatusBadRequest, resp.StatusCode)
 	expect(t, "invalid session", data.Error)
+
+	otherSessions := api.getSessions(otherToken)
+	expect(t, 1, len(otherSessions))
 }

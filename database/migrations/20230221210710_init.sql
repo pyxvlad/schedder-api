@@ -34,7 +34,7 @@ CREATE TABLE sessions (
 
 CREATE TABLE tenants (
 	tenant_id uuid DEFAULT gen_random_uuid(),
-	name text NOT NULL,
+	tenant_name text NOT NULL,
 
 	PRIMARY KEY(tenant_id)
 );

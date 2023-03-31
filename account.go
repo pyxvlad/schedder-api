@@ -82,7 +82,7 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 	if accountRequest.Email != "" {
 		_, err := mail.ParseAddress(accountRequest.Email)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, err.Error())
+			jsonError(w, http.StatusBadRequest, "invalid email")
 			return
 		}
 
@@ -92,7 +92,7 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		row, err := a.db.CreateAccountWithEmail(r.Context(), cawep)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, err.Error())
+			jsonError(w, http.StatusBadRequest, "email already used")
 			return
 		}
 		resp.AccountID = row.AccountID
@@ -121,7 +121,8 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		row, err := a.db.CreateAccountWithPhone(r.Context(), cawpp)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, err.Error())
+			jsonError(w, http.StatusBadRequest, "phone already used")
+			return
 		}
 
 		resp.AccountID = row.AccountID
@@ -213,7 +214,7 @@ func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
 
 	var resp GetSessionsResponse
 
-	resp.Sessions = make([]sessionResponse, 0)
+	resp.Sessions = make([]sessionResponse, 0, len(rows))
 
 	for _, r := range rows {
 		resp.Sessions = append(resp.Sessions, sessionResponse{r.SessionID, r.ExpirationDate, r.Ip.IPNet.IP, r.Device})
