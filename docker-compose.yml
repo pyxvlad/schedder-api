@@ -1,0 +1,30 @@
+version: '3.3'
+services:
+    schedder-api:
+        image: 'schedder-api:latest'
+        ports:
+            - '2023:2023'
+        networks:
+            - backend
+        depends_on:
+            - database
+        environment:
+          # POSTGRES_HOST: db
+          # POSTGRES_USER: postgres
+          # POSTGRES_DB: postgres
+          # POSTGRES_PASSWORD: '⚠️ password for dev'
+          # SCHEDDER_POSTGRES: 'postgres://${POSTGRES_USER}@${POSTGRES_HOST}/${POSTGRES_DB}'
+          SCHEDDER_POSTGRES: 'postgresql://postgres:dev_password@database/postgres'
+ 
+    database:
+        image: 'docker.io/library/postgres:alpine'
+        networks:
+          - backend
+        volumes:
+          - './postgres:/var/lib/postgresql/data'
+        environment:
+          POSTGRES_PASSWORD: 'dev_password'
+
+networks:
+  backend:
+
