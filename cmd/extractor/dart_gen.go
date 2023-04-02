@@ -53,7 +53,7 @@ class ApiClient {
 
 	{{- range .}}
 	Future<ceva> {{.Name}}({{.InputString}} arg) {
-		var response = await this.client.{{.DartMethod}}(Uri.parse('https://127.0.0.1:2023/{{.Path}}'), body: arg.toJson());
+		var response = await this.client.{{.DartMethod}}(Uri.parse('https://127.0.0.1:2023{{.Path}}'), body: arg.toJson());
 		var decodedResponse = jsonDecode(utf8.decode(response.bodyBytes)) as Map;
 		// plm
 	}
@@ -62,7 +62,7 @@ class ApiClient {
 }
 `
 
-func gen(objects ObjectStore, endpoints []Endpoint) {
+func generateDart(objects ObjectStore, endpoints []Endpoint, path string) {
 	used := make(map[string]bool)
 	for k, v := range objects {
 		used[k] = false
@@ -96,10 +96,15 @@ func gen(objects ObjectStore, endpoints []Endpoint) {
 		panic(err)
 	}
 
-	file, err := os.Create("/tmp/classes.dart")
+	file, err := os.Create(path + "/classes.dart")
 	if err != nil {
 		panic(err)
 	}
+
+	file.WriteString("// " + GeneratedFileWarning + "\n")
+	file.WriteString("// " + GeneratedByMessage + "\n")
+
+
 
 	for name := range used {
 		err = t1.Execute(file, objects[name])
@@ -119,10 +124,13 @@ func gen(objects ObjectStore, endpoints []Endpoint) {
 		panic(err)
 	}
 
-	clientFile, err := os.Create("/tmp/client.dart")
+	clientFile, err := os.Create(path + "/client.dart")
 	if err != nil {
 		panic(err)
 	}
+
+	clientFile.WriteString("// " + GeneratedFileWarning + "\n")
+	clientFile.WriteString("// " + GeneratedByMessage + "\n")
 
 	err = client.Execute(clientFile, endpoints)
 	if err != nil {
