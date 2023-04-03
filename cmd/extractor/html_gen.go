@@ -57,28 +57,28 @@ const htmlFooter = `
 
 const htmlTemplate = `
 <div class="div_endpoint">
-<h class="h_endpoint"> {{.Name}} {{.Method}} {{.Path}}</h> <br>
-{{range .Middlewares}}
-<p class="p_json">{{.HTMLRequirement}}</p> {{end}}
-{{if .InputString}}
-<p class="p_json"> Example input for {{.Name}}:</p>
-<pre>
-<code>
-{{.Input.Sample 0}}
-</code>
-</pre>
-{{end}}
-{{if .OutputString}}
-<p class="p_json"> Example output for {{.Name}}:</p>
-<pre>
-<code>
-{{.Output.Sample 0}}
-</code>
-</pre>
-{{end}}
-<p class="p_json"> Example with CURL: <code id="curl-{{.Name}}">{{.CurlExample}}</code>
-<button onclick="CopyCurlExample('{{.Name}}')" class="copy_curl">Copy Example</button>
-</p>
+	<h class="h_endpoint"> {{.Name}} {{.Method}} {{.Path}}</h> <br>
+	{{range .Middlewares}}
+	<p class="p_json">{{.HTMLRequirement}}</p> {{end}}
+	{{if .InputString}}
+	<p class="p_json"> Example input for {{.Name}}:</p>
+	<pre>
+		<code>
+		{{.Input.Sample 0}}
+		</code>
+	</pre>
+	{{end}}
+	{{if .OutputString}}
+	<p class="p_json"> Example output for {{.Name}}:</p>
+	<pre>
+		<code>
+		{{.Output.Sample 0}}
+		</code>
+	</pre>
+	{{end}}
+	<p class="p_json"> Example with CURL: <code id="curl-{{.Name}}">{{.CurlExample}}</code>
+	<button onclick="CopyCurlExample('{{.Name}}')" class="copy_curl">Copy Example</button>
+	</p>
 </div>
 `
 
@@ -127,7 +127,10 @@ func generateHTML(objects ObjectStore, endpoints []Endpoint, path string) {
 	file.WriteString(htmlHeader)
 
 	for _, ep := range endpoints {
-		t1.Execute(file, ep)
+		err = t1.Execute(file, ep)
+		if err != nil {
+			panic(err)
+		}
 	}
 	file.WriteString(htmlFooter)
 }
