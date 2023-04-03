@@ -11,6 +11,7 @@ CREATE TABLE accounts (
 	account_name text NOT NULL,
 
 	is_business boolean DEFAULT FALSE NOT NULL,
+	is_admin boolean DEFAULT FALSE NOT NULL,
 
 	PRIMARY KEY(account_id),
 	-- check that at least one of exists: email, phone
@@ -43,7 +44,7 @@ CREATE TABLE tenant_accounts (
 	tenant_id uuid REFERENCES tenants(tenant_id) NOT NULL,
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
 
-	is_admin boolean DEFAULT FALSE NOT NULL,
+	is_manager boolean DEFAULT FALSE NOT NULL,
 
 	PRIMARY KEY(tenant_id, account_id)
 );

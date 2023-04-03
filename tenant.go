@@ -27,7 +27,7 @@ type GetTenantsResponse struct {
 }
 
 func (a *API) CreateTenant(w http.ResponseWriter, r *http.Request) {
-	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+	accountID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 	request := r.Context().Value(CtxJSON).(*CreateTenantRequest)
 
 	if len(request.Name) < 8 || len(request.Name) > 80 {

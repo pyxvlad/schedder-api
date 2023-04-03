@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -21,9 +22,10 @@ import (
 type CtxKey int
 
 const (
-	CtxSessionID = CtxKey(1)
-	CtxAccountID = CtxKey(2)
-	CtxJSON      = CtxKey(3)
+	CtxSessionID       = CtxKey(1)
+	CtxAccountID       = CtxKey(2)
+	CtxAuthenticatedID = CtxKey(3)
+	CtxJSON            = CtxKey(4)
 )
 
 // Struct keeping track of all the states, pretty much a singleton
@@ -55,14 +57,20 @@ func New(conn database.DBTX) *API {
 				})
 			})
 		})
+		r.With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Get("/by-email/{email}", api.GetAccountByEmailAsAdmin)
+		r.Route("/{accountID}", func(r chi.Router) {
+			r.Use(api.WithAccountID)
+			r.With(WithJSON[SetAdminRequest]).With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Post("/admin", api.SetAdmin)
+			r.With(WithJSON[SetBusinessRequest]).With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Post("/business", api.SetBusiness)
+		})
 		//r.Use(api.AuthenticatedEndpoint)
 		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
 
 	api.mux.Route("/tenants", func(r chi.Router) {
 		r.With(WithJSON[CreateTenantRequest]).With(api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
+		r.Get("/", api.GetTenants)
 	})
-
 
 	//b := bytes.Buffer{}
 
@@ -95,12 +103,16 @@ func New(conn database.DBTX) *API {
 	return api
 }
 
-func (a * API) GetMux() *chi.Mux{
+func (a *API) GetMux() *chi.Mux {
 	return a.mux
 }
 
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
+}
+
+func (a *API) GetDB() *database.Queries {
+	return a.db
 }
 
 func RequiredEnv(name string, example string) string {
@@ -113,6 +125,7 @@ func RequiredEnv(name string, example string) string {
 
 func Run() {
 	postgresURI := RequiredEnv("SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db")
+	log.Printf("INFO: connecting to Postgres using: %#v", postgresURI)
 	stdDB, err := sql.Open("pgx", postgresURI)
 	if err != nil {
 		panic(err)
@@ -164,16 +177,32 @@ func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 			jsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
-		accountID, err := a.db.GetSessionAccount(r.Context(), token)
+		authenticatedID, err := a.db.GetSessionAccount(r.Context(), token)
 		if err != nil {
 			jsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
-		r = r.WithContext(context.WithValue(r.Context(), CtxAccountID, accountID))
+		r = r.WithContext(context.WithValue(r.Context(), CtxAuthenticatedID, authenticatedID))
 		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(fn)
+}
+
+func (a *API) AdminEndpoint(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
+		admin, err := a.db.GetAdminForAccount(r.Context(), authenticatedID)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "how?")
+			return
+		}
+		if !admin {
+			jsonError(w, http.StatusForbidden, "not admin")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (a *API) WithSessionID(next http.Handler) http.Handler {
@@ -195,6 +224,27 @@ func (a *API) WithSessionID(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+func (a *API) WithAccountID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accountString := chi.URLParam(r, "accountID")
+		if accountString == "" {
+			jsonError(w, http.StatusNotFound, "invalid account")
+			return
+		}
+
+		accountID, err := uuid.Parse(accountString)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "invalid account")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), CtxAccountID, accountID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 
 func WithJSON[T any](next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

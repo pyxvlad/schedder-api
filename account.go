@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgtype"
 	"gitlab.com/vlad.anghel/schedder-api/database"
@@ -57,6 +58,23 @@ type sessionResponse struct {
 type GetSessionsResponse struct {
 	Response
 	Sessions []sessionResponse `json:"sessions"`
+}
+
+type GetAccountByEmailAsAdminResponse struct {
+	Response
+	AccountID uuid.UUID `json:"account_id"`
+	Email string `json:"email,omitempty"`
+	Phone string `json:"phone,omitempty"`
+	IsBusiness bool `json:"is_business"`
+	IsAdmin bool `json:"is_admin"`
+}
+
+type SetAdminRequest struct {
+	Admin bool `json:"admin"`
+}
+
+type SetBusinessRequest struct {
+	Business bool `json:"business"`
 }
 
 const BcryptRounds = 10
@@ -204,9 +222,9 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
-	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+	authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 
-	rows, err := a.db.GetSessionsForAccount(r.Context(), accountID)
+	rows, err := a.db.GetSessionsForAccount(r.Context(), authenticatedID)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "couldn't get sessions")
 		return
@@ -224,10 +242,10 @@ func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {
-	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+	authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 	sessionID := r.Context().Value(CtxSessionID).(uuid.UUID)
 
-	affectedRows, err := a.db.RevokeSessionForAccount(r.Context(), database.RevokeSessionForAccountParams{SessionID: sessionID, AccountID: accountID})
+	affectedRows, err := a.db.RevokeSessionForAccount(r.Context(), database.RevokeSessionForAccountParams{SessionID: sessionID, AccountID: authenticatedID})
 	if affectedRows != 1 {
 		jsonError(w, http.StatusBadRequest, "invalid session")
 		return
@@ -235,6 +253,59 @@ func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "couldn't revoke session")
 		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) GetAccountByEmailAsAdmin(w http.ResponseWriter, r *http.Request) {
+	email := chi.URLParam(r, "email")
+
+	account, err := a.db.FindAccountByEmail(r.Context(), sql.NullString{String: email, Valid: true})
+	if err != nil {
+		jsonError(w, http.StatusNotFound, "invalid email")
+		return
+	}
+
+	var resp GetAccountByEmailAsAdminResponse
+	resp.AccountID = account.AccountID
+	if account.Email.Valid {
+		resp.Email = account.Email.String
+	}
+	if account.Phone.Valid {
+		resp.Phone = account.Phone.String
+	}
+	resp.IsAdmin = account.IsAdmin
+	resp.IsBusiness = account.IsBusiness
+
+	jsonResp(w, http.StatusOK, resp)
+}
+
+func (a *API) SetAdmin(w http.ResponseWriter, r *http.Request) {
+	// TODO: use this for logs once you setup a logging system
+	// authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
+	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+
+	json := r.Context().Value(CtxJSON).(*SetAdminRequest)
+	
+	err := a.db.SetAdminForAccount(r.Context(), database.SetAdminForAccountParams{AccountID: accountID, IsAdmin: json.Admin})
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "hmm")
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) SetBusiness(w http.ResponseWriter, r *http.Request) {
+	// TODO: use this for logs once you setup a logging system
+	// authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
+	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
+
+	json := r.Context().Value(CtxJSON).(*SetBusinessRequest)
+	
+	err := a.db.SetBusinessForAccount(r.Context(), database.SetBusinessForAccountParams{AccountID: accountID, IsBusiness: json.Business})
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "hmm")
 	}
 
 	w.WriteHeader(http.StatusOK)

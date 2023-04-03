@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,11 +18,6 @@ func TestRegisterWithEmail(t *testing.T) {
 
 	api := BeginTx(t)
 	defer api.Rollback()
-
-	type Response struct {
-		schedder.PostAccountResponse
-		Error string `json:"error,omitempty"`
-	}
 
 	var buffer bytes.Buffer
 
@@ -38,7 +34,7 @@ func TestRegisterWithEmail(t *testing.T) {
 
 	resp := w.Result()
 
-	var response Response
+	var response schedder.PostAccountResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +277,7 @@ func TestRegisterWithDuplicatePhone(t *testing.T) {
 
 func TestGenerateTokenWithEmail(t *testing.T) {
 	t.Parallel()
-	
+
 	api := BeginTx(t)
 	defer api.Rollback()
 
@@ -603,7 +599,6 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 	api.registerUserByEmail(otherEmail, otherPassword)
 	otherToken := api.generateToken(otherEmail, otherPassword)
 
-
 	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
 
 	req := httptest.NewRequest("DELETE", "/accounts/self/sessions/"+session_id, nil)
@@ -625,4 +620,127 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 
 	otherSessions := api.getSessions(otherToken)
 	expect(t, 1, len(otherSessions))
+}
+
+func TestGetAccountByEmailAsAdminWithoutBeingAdmin(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "user@gmail.com"
+	password := "hackmenow"
+
+	other_email := "other@example.com"
+	other_password := "hackmenow_other"
+
+	api.registerUserByEmail(email, password)
+	api.registerUserByEmail(other_email, other_password)
+	token := api.generateToken(email, password)
+
+	api.forceAdmin(email, true)
+
+	r := httptest.NewRequest("GET", "/accounts/by-email/"+other_email, nil)
+	r.Header.Add("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, r)
+
+	resp := w.Result()
+	var data schedder.Response
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
+
+	expect(t, "", data.Error)
+}
+
+func TestGetAccountByEmailAsAdmin(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "user@example.com"
+	password := "hackmenow"
+
+	other_email := "other@example.com"
+	other_password := "hackmenow_other"
+
+	api.registerUserByEmail(email, password)
+	api.registerUserByEmail(other_email, other_password)
+
+	r := httptest.NewRequest("GET", "/accounts/by-email/"+other_email, nil)
+	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, r)
+
+	resp := w.Result()
+	var data schedder.Response
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatal(err)
+	}
+
+	expect(t, "not admin", data.Error)
+}
+
+func TestSetAdmin(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "user@example.com"
+	password := "hackmenow"
+
+	api.registerUserByEmail(email, password)
+
+	other_email := "other@example.com"
+	other_password := "hackmenow_other"
+
+	api.registerUserByEmail(other_email, other_password)
+
+	token := api.generateToken(email, password)
+
+	api.forceAdmin(email, true)
+
+	accountID := api.findAccountByEmail(other_email)
+	r := httptest.NewRequest("POST", "/accounts/"+accountID.String()+"/admin", strings.NewReader("{\"admin\": true}"))
+	w := httptest.NewRecorder()
+	r.Header.Add("Authorization", "Bearer "+token)
+
+	api.ServeHTTP(w, r)
+
+	resp := w.Result()
+	expect(t, http.StatusOK ,resp.StatusCode)
+}
+
+func TestSetBusiness(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	email := "user@example.com"
+	password := "hackmenow"
+
+	api.registerUserByEmail(email, password)
+
+	other_email := "other@example.com"
+	other_password := "hackmenow_other"
+
+	api.registerUserByEmail(other_email, other_password)
+
+	token := api.generateToken(email, password)
+
+	api.forceAdmin(email, true)
+
+	accountID := api.findAccountByEmail(other_email)
+	r := httptest.NewRequest("POST", "/accounts/"+accountID.String()+"/business", strings.NewReader("{\"business\": true}"))
+	w := httptest.NewRecorder()
+	r.Header.Add("Authorization", "Bearer "+token)
+
+	api.ServeHTTP(w, r)
+
+	resp := w.Result()
+	expect(t, http.StatusOK ,resp.StatusCode)
 }

@@ -194,6 +194,58 @@ func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
 	return session_ids
 }
 
+func (a *ApiTX) findAccountByEmail(email string) uuid.UUID {
+	account, err := a.GetDB().FindAccountByEmail(context.Background(), sql.NullString{String: email, Valid: true})
+	if err != nil {
+		panic(err)
+	}
+	return account.AccountID
+}
+
+func (a *ApiTX) forceAdmin(email string, admin bool) {
+	db := a.GetDB()
+	accountID := a.findAccountByEmail(email)
+	err := db.SetAdminForAccount(context.Background(), database.SetAdminForAccountParams{AccountID: accountID, IsAdmin: admin})
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (a *ApiTX) forceBusiness(email string, business bool) {
+	db := a.GetDB()
+	accountID := a.findAccountByEmail(email)
+	err := db.SetBusinessForAccount(context.Background(), database.SetBusinessForAccountParams{AccountID: accountID, IsBusiness: business})
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (a *ApiTX) createTenant(token string, tenant_name string) {
+
+	var request schedder.CreateTenantRequest
+
+	request.Name = tenant_name
+
+	buff := bytes.Buffer{}
+	json.NewEncoder(&buff).Encode(request)
+
+	r := httptest.NewRequest("POST", "/tenants", &buff)
+	w := httptest.NewRecorder()
+	r.Header.Add("Authorization", "Bearer " + token)
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+	expect(a.t, http.StatusCreated, resp.StatusCode)
+}
+
+func (a *ApiTX) createTenantAndAccount(email string, password string, tenant_name string) {
+	a.registerUserByEmail(email, password)
+	a.forceBusiness(email, true)
+	token := a.generateToken(email, password)
+	a.createTenant(token, tenant_name)
+}
+
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{
 		{"POST", "/accounts"},
