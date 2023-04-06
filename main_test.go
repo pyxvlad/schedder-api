@@ -103,7 +103,7 @@ func (a *ApiTX) Rollback() {
 	}
 }
 
-func (a *ApiTX) registerUserByEmail(email string, password string) {
+func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
 	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
@@ -114,12 +114,14 @@ func (a *ApiTX) registerUserByEmail(email string, password string) {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	data := schedder.Response{}
+	data := schedder.PostAccountResponse{}
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
 	}
 	expect(a.t, "", data.Error)
+
+	return data.AccountID
 }
 
 func (a *ApiTX) registerUserByPhone(phone string, password string) {
@@ -220,7 +222,7 @@ func (a *ApiTX) forceBusiness(email string, business bool) {
 	}
 }
 
-func (a *ApiTX) createTenant(token string, tenant_name string) {
+func (a *ApiTX) createTenant(token string, tenant_name string) uuid.UUID {
 
 	var request schedder.CreateTenantRequest
 
@@ -231,19 +233,25 @@ func (a *ApiTX) createTenant(token string, tenant_name string) {
 
 	r := httptest.NewRequest("POST", "/tenants", &buff)
 	w := httptest.NewRecorder()
-	r.Header.Add("Authorization", "Bearer " + token)
+	r.Header.Add("Authorization", "Bearer "+token)
 
 	a.ServeHTTP(w, r)
 
 	resp := w.Result()
 	expect(a.t, http.StatusCreated, resp.StatusCode)
+	var response schedder.CreateTenantResponse
+	err := json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	return response.TenantID
 }
 
-func (a *ApiTX) createTenantAndAccount(email string, password string, tenant_name string) {
+func (a *ApiTX) createTenantAndAccount(email string, password string, tenant_name string) uuid.UUID {
 	a.registerUserByEmail(email, password)
 	a.forceBusiness(email, true)
 	token := a.generateToken(email, password)
-	a.createTenant(token, tenant_name)
+	return a.createTenant(token, tenant_name)
 }
 
 func TestWithInvalidJson(t *testing.T) {

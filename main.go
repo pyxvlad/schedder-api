@@ -25,7 +25,8 @@ const (
 	CtxSessionID       = CtxKey(1)
 	CtxAccountID       = CtxKey(2)
 	CtxAuthenticatedID = CtxKey(3)
-	CtxJSON            = CtxKey(4)
+	CtxTenantID        = CtxKey(4)
+	CtxJSON            = CtxKey(5)
 )
 
 // Struct keeping track of all the states, pretty much a singleton
@@ -70,6 +71,11 @@ func New(conn database.DBTX) *API {
 	api.mux.Route("/tenants", func(r chi.Router) {
 		r.With(WithJSON[CreateTenantRequest]).With(api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
 		r.Get("/", api.GetTenants)
+		r.Route("/{tenantID}", func(r chi.Router) {
+			r.Use(api.WithTenantID)
+			r.With(WithJSON[AddTenantMemberRequest]).With(api.AuthenticatedEndpoint).With(api.TenantManagerEndpoint).Post("/members", api.AddTenantMember)
+			r.With(api.AuthenticatedEndpoint).With(api.TenantManagerEndpoint).Get("/members", api.GetTenantMembers)
+		})
 	})
 
 	//b := bytes.Buffer{}
@@ -245,6 +251,43 @@ func (a *API) WithAccountID(next http.Handler) http.Handler {
 	})
 }
 
+func (a *API) WithTenantID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantString := chi.URLParam(r, "tenantID")
+		if tenantString == "" {
+			jsonError(w, http.StatusNotFound, "invalid tenant")
+			return
+		}
+
+		tenantID, err := uuid.Parse(tenantString)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "invalid tenant")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), CtxTenantID, tenantID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (a *API) TenantManagerEndpoint(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
+		tenantID := r.Context().Value(CtxTenantID).(uuid.UUID)
+
+		isManager, err := a.db.IsTenantManager(r.Context(), database.IsTenantManagerParams{TenantID: tenantID, AccountID: authenticatedID})
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "yes")
+			return
+		}
+		if !isManager {
+			jsonError(w, http.StatusForbidden, "not manager")
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 
 func WithJSON[T any](next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

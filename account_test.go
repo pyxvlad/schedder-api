@@ -355,10 +355,6 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 
 func TestGenerateTokenWithBadPassword(t *testing.T) {
 	t.Parallel()
-	type Response struct {
-		schedder.PostAccountResponse
-		Error string `json:"error,omitempty"`
-	}
 
 	api := BeginTx(t)
 	defer api.Rollback()
@@ -384,6 +380,9 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 
 	var response schedder.Response
 	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
 	expect(t, response.Error, "invalid password")
 	expect(t, http.StatusBadRequest, resp.StatusCode)
 }
@@ -430,6 +429,9 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 
 			var response Response
 			err = json.NewDecoder(resp.Body).Decode(&response)
+			if err != nil {
+				t.Fatal(err)
+			}
 			expect(t, response.Error, td.err)
 			expect(t, http.StatusBadRequest, resp.StatusCode)
 
@@ -532,7 +534,7 @@ func TestGetSessionsForAccount(t *testing.T) {
 	expect(t, "", response.Error)
 
 	for _, s := range response.Sessions {
-		if s.ExpirationDate.Sub(time.Now()) < (7 * 24 * time.Hour) {
+		if time.Until(s.ExpirationDate) < (7 * 24 * time.Hour) {
 			t.Fatalf("session %s doesn't expire in 7 days", s.ID)
 		}
 
