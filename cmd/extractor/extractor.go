@@ -55,8 +55,12 @@ func (m *Middleware) HTMLRequirement() string {
 		return "Required URL parameter: <code>sessionID</code>"
 	case "WithAccountID-fm":
 		return "Required URL parameter: <code>accountID</code>"
+	case "WithTenantID-fm":
+		return "Required URL parameter: <code>tenantID</code>"
 	case "AdminEndpoint-fm":
 		return "Requires the authenticated user to be an <strong>Admin</strong>"
+	case "TenantManagerEndpoint-fm":
+		return "Requires the authenticated user to be an <strong>Manager</strong> of <strong>tenantID</strong> from the URL parameter"
 	default:
 		panic("I don't know how to make this into a requirement:" + m.Name)
 	}

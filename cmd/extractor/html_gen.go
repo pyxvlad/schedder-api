@@ -64,7 +64,7 @@ const htmlTemplate = `
 	<p class="p_json"> Example input for {{.Name}}:</p>
 	<pre>
 		<code>
-		{{.Input.Sample 0}}
+{{.Input.Sample 0}}
 		</code>
 	</pre>
 	{{end}}
@@ -72,7 +72,7 @@ const htmlTemplate = `
 	<p class="p_json"> Example output for {{.Name}}:</p>
 	<pre>
 		<code>
-		{{.Output.Sample 0}}
+{{.Output.Sample 0}}
 		</code>
 	</pre>
 	{{end}}
