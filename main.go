@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib" // enable the stdlib adapter of pgx, used for goose migrations
@@ -45,6 +46,14 @@ func New(conn database.DBTX) *API {
 	api.dbtx = conn
 	api.db = database.New(api.dbtx)
 	api.mux = chi.NewRouter()
+	api.mux.Use(cors.Handler(cors.Options{
+		AllowedOrigins: []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum value not ignored by any of major browsers
+	}))
 	api.mux.Route("/accounts", func(r chi.Router) {
 		r.With(WithJSON[PostAccountRequest]).Post("/", api.PostAccount)
 		r.Route("/self", func(r chi.Router) {
@@ -153,6 +162,7 @@ func Run() {
 	}
 	if err := conn.Close(context.Background()); err != nil {
 		panic(err)
+
 	}
 }
 
