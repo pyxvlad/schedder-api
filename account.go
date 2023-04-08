@@ -1,8 +1,11 @@
 package schedder
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/mail"
@@ -21,9 +24,9 @@ import (
 // endpoint expects.
 type PostAccountRequest struct {
 	// Email for the newly created account, i.e. user@example.com
-	Email string `json:"email"`
+	Email string `json:"email,omitempty"`
 	// Phone number as a string, i.e. "+40743123123"
-	Phone string `json:"phone"`
+	Phone string `json:"phone,omitempty"`
 	// The password that the user wants to use
 	Password string `json:"password"`
 }
@@ -42,8 +45,8 @@ type GenerateTokenResponse struct {
 }
 
 type GenerateTokenRequest struct {
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	Email    string `json:"email,omitempty"`
+	Phone    string `json:"phone,omitempty"`
 	Password string `json:"password"`
 	Device   string `json:"device"`
 }
@@ -55,18 +58,18 @@ type sessionResponse struct {
 	Device         string    `json:"device"`
 }
 
-type GetSessionsResponse struct {
+type GetSessionsForAccountResponse struct {
 	Response
 	Sessions []sessionResponse `json:"sessions"`
 }
 
 type GetAccountByEmailAsAdminResponse struct {
 	Response
-	AccountID uuid.UUID `json:"account_id"`
-	Email string `json:"email,omitempty"`
-	Phone string `json:"phone,omitempty"`
-	IsBusiness bool `json:"is_business"`
-	IsAdmin bool `json:"is_admin"`
+	AccountID  uuid.UUID `json:"account_id"`
+	Email      string    `json:"email,omitempty"`
+	Phone      string    `json:"phone,omitempty"`
+	IsBusiness bool      `json:"is_business"`
+	IsAdmin    bool      `json:"is_admin"`
 }
 
 type SetAdminRequest struct {
@@ -80,7 +83,21 @@ type SetBusinessRequest struct {
 const BcryptRounds = 10
 
 func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
-	accountRequest := r.Context().Value(CtxJSON).(*PostAccountRequest)
+	// TODO: move this outside, but where?
+	generateVerificationCode := func() (string, error) {
+		const (
+			max = 1000000
+			min = 100000
+		)
+		randomNumber, err := rand.Int(rand.Reader, big.NewInt(max-min))
+		if err != nil {
+			return "", err
+		}
+		i := randomNumber.Int64() + min
+		return fmt.Sprint(i), nil
+	}
+	ctx := r.Context()
+	accountRequest := ctx.Value(CtxJSON).(*PostAccountRequest)
 	rawPassword := []byte(accountRequest.Password)
 
 	if (len(rawPassword) < 8) || (len(rawPassword) > 64) {
@@ -104,18 +121,44 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		tx, err := a.txlike.Begin(ctx)
+		defer tx.Rollback(ctx)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+
+		queries := database.New(tx)
+
 		cawep := database.CreateAccountWithEmailParams{
 			Email:    sql.NullString{String: accountRequest.Email, Valid: true},
 			Password: password,
 		}
-		row, err := a.db.CreateAccountWithEmail(r.Context(), cawep)
+
+		row, err := queries.CreateAccountWithEmail(ctx, cawep)
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, "email already used")
+			return
+		}
+		code, err := generateVerificationCode()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+		cvcp := database.CreateVerificationCodeParams{
+			AccountID:        row.AccountID,
+			VerificationCode: code,
+			Scope:            database.VerificationScopeRegister,
+		}
+		err = queries.CreateVerificationCode(ctx, cvcp)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
+		tx.Commit(ctx)
 	} else if accountRequest.Phone != "" {
 		phone := strings.Map(func(r rune) rune {
 			if unicode.IsDigit(r) || r == '+' {
@@ -133,19 +176,45 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		tx, err := a.txlike.Begin(ctx)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+		defer tx.Rollback(ctx)
+		queries := database.New(tx)
+
 		cawpp := database.CreateAccountWithPhoneParams{
 			Phone:    sql.NullString{String: phone, Valid: true},
 			Password: password,
 		}
-		row, err := a.db.CreateAccountWithPhone(r.Context(), cawpp)
+		row, err := queries.CreateAccountWithPhone(ctx, cawpp)
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, "phone already used")
+			return
+		}
+
+		code, err := generateVerificationCode()
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+	
+		cvcp := database.CreateVerificationCodeParams{
+			AccountID:        row.AccountID,
+			VerificationCode: code,
+			Scope:            database.VerificationScopeRegister,
+		}
+		err = queries.CreateVerificationCode(ctx, cvcp)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
+		tx.Commit(ctx)
 	} else {
 		jsonError(w, http.StatusBadRequest, "expected phone or email")
 		return
@@ -230,7 +299,7 @@ func (a *API) GetSessionsForAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp GetSessionsResponse
+	var resp GetSessionsForAccountResponse
 
 	resp.Sessions = make([]sessionResponse, 0, len(rows))
 
@@ -287,7 +356,7 @@ func (a *API) SetAdmin(w http.ResponseWriter, r *http.Request) {
 	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
 
 	json := r.Context().Value(CtxJSON).(*SetAdminRequest)
-	
+
 	err := a.db.SetAdminForAccount(r.Context(), database.SetAdminForAccountParams{AccountID: accountID, IsAdmin: json.Admin})
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "hmm")
@@ -302,7 +371,7 @@ func (a *API) SetBusiness(w http.ResponseWriter, r *http.Request) {
 	accountID := r.Context().Value(CtxAccountID).(uuid.UUID)
 
 	json := r.Context().Value(CtxJSON).(*SetBusinessRequest)
-	
+
 	err := a.db.SetBusinessForAccount(r.Context(), database.SetBusinessForAccountParams{AccountID: accountID, IsBusiness: json.Business})
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "hmm")

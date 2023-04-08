@@ -3,9 +3,11 @@ package database
 //go:generate sqlc generate
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/pressly/goose/v3"
 )
 
@@ -34,5 +36,11 @@ func ResetDB(db *sql.DB) {
 	}
 }
 
+
+type TxLike interface {
+	DBTX
+	Begin(ctx context.Context) (pgx.Tx, error)
+	BeginFunc(ctx context.Context, f func(pgx.Tx) error) (err error)
+}
 
 

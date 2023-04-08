@@ -33,27 +33,31 @@ const (
 // Struct keeping track of all the states, pretty much a singleton
 type API struct {
 	db   *database.Queries
-	dbtx database.DBTX
+	txlike database.TxLike
 	mux  *chi.Mux
+	emailVerifier Verifier
+	phoneVerifier Verifier
 }
 
 type Response struct {
 	Error string `json:"error,omitempty"`
 }
 
-func New(conn database.DBTX) *API {
+func New(txlike database.TxLike) *API {
 	api := new(API)
-	api.dbtx = conn
-	api.db = database.New(api.dbtx)
+	api.txlike = txlike
+	api.db = database.New(api.txlike)
 	api.mux = chi.NewRouter()
+	// api.mux.Use(WithCORS)
 	api.mux.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"https://*", "http://*"},
+		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
+
 	api.mux.Route("/accounts", func(r chi.Router) {
 		r.With(WithJSON[PostAccountRequest]).Post("/", api.PostAccount)
 		r.Route("/self", func(r chi.Router) {
@@ -70,20 +74,20 @@ func New(conn database.DBTX) *API {
 		r.With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Get("/by-email/{email}", api.GetAccountByEmailAsAdmin)
 		r.Route("/{accountID}", func(r chi.Router) {
 			r.Use(api.WithAccountID)
-			r.With(WithJSON[SetAdminRequest]).With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Post("/admin", api.SetAdmin)
-			r.With(WithJSON[SetBusinessRequest]).With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Post("/business", api.SetBusiness)
+			r.With(WithJSON[SetAdminRequest], api.AuthenticatedEndpoint, api.AdminEndpoint).Post("/admin", api.SetAdmin)
+			r.With(WithJSON[SetBusinessRequest], api.AuthenticatedEndpoint, api.AdminEndpoint).Post("/business", api.SetBusiness)
 		})
 		//r.Use(api.AuthenticatedEndpoint)
 		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
 
 	api.mux.Route("/tenants", func(r chi.Router) {
-		r.With(WithJSON[CreateTenantRequest]).With(api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
+		r.With(WithJSON[CreateTenantRequest], api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
 		r.Get("/", api.GetTenants)
 		r.Route("/{tenantID}", func(r chi.Router) {
 			r.Use(api.WithTenantID)
-			r.With(WithJSON[AddTenantMemberRequest]).With(api.AuthenticatedEndpoint).With(api.TenantManagerEndpoint).Post("/members", api.AddTenantMember)
-			r.With(api.AuthenticatedEndpoint).With(api.TenantManagerEndpoint).Get("/members", api.GetTenantMembers)
+			r.With(WithJSON[AddTenantMemberRequest], api.AuthenticatedEndpoint, api.TenantManagerEndpoint).Post("/members", api.AddTenantMember)
+			r.With(api.AuthenticatedEndpoint, api.TenantManagerEndpoint).Get("/members", api.GetTenantMembers)
 		})
 	})
 

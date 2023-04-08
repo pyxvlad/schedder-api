@@ -12,10 +12,23 @@ CREATE TABLE accounts (
 
 	is_business boolean DEFAULT FALSE NOT NULL,
 	is_admin boolean DEFAULT FALSE NOT NULL,
+	activated boolean DEFAULT FALSE NOT NULL,
 
 	PRIMARY KEY(account_id),
 	-- check that at least one of exists: email, phone
 	CONSTRAINT email_or_phone CHECK(email != NULL OR phone != NULL)
+);
+
+CREATE TYPE verification_scope AS ENUM ('register');
+
+CREATE TABLE verification_codes (
+	account_id UUID REFERENCES accounts(account_id) NOT NULL,
+	verification_code text NOT NULL,
+	scope verification_scope NOT NULL,
+	expiration_date timestamp NOT NULL DEFAULT (NOW() + interval '15m'),
+	used boolean DEFAULT FALSE NOT NULL,
+
+	PRIMARY KEY(account_id, verification_code)
 );
 
 CREATE TABLE sessions (

@@ -84,7 +84,7 @@ type ApiTX struct {
 }
 
 func BeginTx(t *testing.T) ApiTX {
-	tx, err := conn.BeginTx(context.Background(), pgx.TxOptions{})
+	tx, err := conn.Begin(context.Background())
 	if err != nil {
 		t.Fatalf("testing: BeginTx: %e", err)
 	}
@@ -186,7 +186,7 @@ func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
 
 	resp := w.Result()
 
-	var response schedder.GetSessionsResponse
+	var response schedder.GetSessionsForAccountResponse
 	json.NewDecoder(resp.Body).Decode(&response)
 
 	session_ids = make([]uuid.UUID, 0)

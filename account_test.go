@@ -24,13 +24,15 @@ func TestRegisterWithEmail(t *testing.T) {
 	email := "mail@gmail.com"
 	password := "hackmetoday"
 	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("POST", "/accounts", &buffer)
+
+	r := httptest.NewRequest("POST", "/accounts", &buffer)
 	w := httptest.NewRecorder()
 
-	api.ServeHTTP(w, req)
+	api.ServeHTTP(w, r)
 
 	resp := w.Result()
 
@@ -507,7 +509,7 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 func TestGetSessionsForAccount(t *testing.T) {
 	t.Parallel()
 	type GetSessionResponse struct {
-		schedder.GetSessionsResponse
+		schedder.GetSessionsForAccountResponse
 		Error string
 	}
 	api := BeginTx(t)
