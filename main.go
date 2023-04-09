@@ -43,7 +43,7 @@ type Response struct {
 	Error string `json:"error,omitempty"`
 }
 
-func New(txlike database.TxLike) *API {
+func New(txlike database.TxLike, emailVerifier Verifier, phoneVerifier Verifier) *API {
 	api := new(API)
 	api.txlike = txlike
 	api.db = database.New(api.txlike)
@@ -61,6 +61,7 @@ func New(txlike database.TxLike) *API {
 	api.mux.Route("/accounts", func(r chi.Router) {
 		r.With(WithJSON[PostAccountRequest]).Post("/", api.PostAccount)
 		r.Route("/self", func(r chi.Router) {
+			r.With(WithJSON[VerifyCodeRequest]).Post("/verify", api.VerifyCode)
 			r.Route("/sessions", func(r chi.Router) {
 				r.With(WithJSON[GenerateTokenRequest]).Post("/", api.GenerateToken)
 				r.With(api.AuthenticatedEndpoint).Get("/", api.GetSessionsForAccount)
@@ -90,34 +91,8 @@ func New(txlike database.TxLike) *API {
 			r.With(api.AuthenticatedEndpoint, api.TenantManagerEndpoint).Get("/members", api.GetTenantMembers)
 		})
 	})
-
-	//b := bytes.Buffer{}
-
-	//var f func(pattern string, r chi.Routes)
-
-	//f = func(pattern string, r chi.Routes) {
-	//	for _, route := range r.Routes() {
-	//		pat := strings.TrimSuffix(route.Pattern, "/*")
-	//		pat = pattern + pat
-	//		if route.SubRoutes == nil {
-	//			for k, v := range route.Handlers {
-	//				fpn := runtime.FuncForPC(reflect.ValueOf(v).Pointer()).Name()
-	//				splits := strings.Split(fpn, ".")
-	//				fpn = splits[len(splits)-1]
-	//				fpn = strings.TrimSuffix(fpn, "-fm")
-	//				request := fmt.Sprintf("%s %s %s\n", k, fpn, pat)
-	//				b.WriteString(request)
-	//			}
-	//		} else {
-	//			sub := route.SubRoutes
-	//			f(pat, sub)
-	//		}
-	//	}
-	//}
-
-	//f("", api.mux)
-
-	//ioutil.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
+	api.emailVerifier = emailVerifier
+	api.phoneVerifier = phoneVerifier
 
 	return api
 }
@@ -159,7 +134,10 @@ func Run() {
 		panic(err)
 	}
 
-	api := New(conn)
+	emailVerifier := WriterVerifier{os.Stdout, "email"}
+	phoneVerifier := WriterVerifier{os.Stdout, "phone"}
+
+	api := New(conn, &emailVerifier, &phoneVerifier)
 
 	if err := http.ListenAndServe(":2023", api); err != nil {
 		panic(err)

@@ -49,6 +49,32 @@ func TestRegisterWithEmail(t *testing.T) {
 	expect(t, email, response.Email)
 }
 
+func TestRegisterWithShortPassword(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	var buffer bytes.Buffer
+	json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: "some@gmail.com", Password: "meow"})
+	req := httptest.NewRequest("POST", "/accounts", &buffer)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+	var response schedder.PostAccountResponse
+	err := json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("%#v", response.Error)
+	expect(t, "password too short", response.Error)
+	expect(t, http.StatusBadRequest, resp.StatusCode)
+
+}
+
 func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 	t.Parallel()
 	api := BeginTx(t)
@@ -298,6 +324,7 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -341,6 +368,7 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	api.registerUserByPhone(phone, password)
+	api.activateUserByPhone(phone)
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -376,6 +404,7 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	api.registerUserByPhone(phone, password+"bad")
+	api.activateUserByPhone(phone)
 
 	api.ServeHTTP(w, req)
 	resp := w.Result()
@@ -450,6 +479,7 @@ func TestAuthMiddleware(t *testing.T) {
 	email := "test@example.com"
 	password := "hackmenow"
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
 
 	endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
@@ -518,6 +548,7 @@ func TestGetSessionsForAccount(t *testing.T) {
 	email := "test@example.com"
 	password := "hackmenow"
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
 
 	req := httptest.NewRequest("GET", "/accounts/self/sessions", nil)
@@ -552,6 +583,7 @@ func TestRevokeSession(t *testing.T) {
 	email := "test@example.com"
 	password := "hackmenow"
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
 	sessions := api.getSessions(token)
 
@@ -596,11 +628,13 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 	email := "test@example.com"
 	password := "hackmenow"
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
 
 	otherEmail := "other@example.com"
 	otherPassword := "hackmenow"
 	api.registerUserByEmail(otherEmail, otherPassword)
+	api.activateUserByEmail(otherEmail)
 	otherToken := api.generateToken(otherEmail, otherPassword)
 
 	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
@@ -639,6 +673,8 @@ func TestGetAccountByEmailAsAdminWithoutBeingAdmin(t *testing.T) {
 
 	api.registerUserByEmail(email, password)
 	api.registerUserByEmail(other_email, other_password)
+	api.activateUserByEmail(email)
+	api.activateUserByEmail(other_email)
 	token := api.generateToken(email, password)
 
 	api.forceAdmin(email, true)
@@ -672,6 +708,8 @@ func TestGetAccountByEmailAsAdmin(t *testing.T) {
 
 	api.registerUserByEmail(email, password)
 	api.registerUserByEmail(other_email, other_password)
+	api.activateUserByEmail(email)
+	api.activateUserByEmail(other_email)
 
 	r := httptest.NewRequest("GET", "/accounts/by-email/"+other_email, nil)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
@@ -698,11 +736,13 @@ func TestSetAdmin(t *testing.T) {
 	password := "hackmenow"
 
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 
 	other_email := "other@example.com"
 	other_password := "hackmenow_other"
 
 	api.registerUserByEmail(other_email, other_password)
+	api.activateUserByEmail(other_email)
 
 	token := api.generateToken(email, password)
 
@@ -728,11 +768,13 @@ func TestSetBusiness(t *testing.T) {
 	password := "hackmenow"
 
 	api.registerUserByEmail(email, password)
+	api.activateUserByEmail(email)
 
 	other_email := "other@example.com"
 	other_password := "hackmenow_other"
 
 	api.registerUserByEmail(other_email, other_password)
+	api.activateUserByEmail(other_email)
 
 	token := api.generateToken(email, password)
 

@@ -9,10 +9,10 @@ INSERT INTO accounts (phone, password, account_name) VALUES ($1, $2, $3) RETURNI
 UPDATE accounts SET activated = true WHERE account_id = $1;
 
 -- name: GetPasswordByEmail :one
-SELECT account_id, password FROM accounts WHERE email = $1;
+SELECT account_id, password FROM accounts WHERE email = $1 AND activated = true;
 
 -- name: GetPasswordByPhone :one
-SELECT account_id, password FROM accounts WHERE phone = $1;
+SELECT account_id, password FROM accounts WHERE phone = $1 AND activated = true;
 
 -- name: SetAdminForAccount :exec
 UPDATE accounts SET is_admin = $2 WHERE account_id = $1;

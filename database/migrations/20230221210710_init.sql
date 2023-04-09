@@ -93,5 +93,7 @@ DROP TABLE services;
 DROP TABLE tenant_accounts;
 DROP TABLE tenants;
 DROP TABLE sessions;
+DROP TABLE verification_codes;
+DROP TYPE verification_scope;
 DROP TABLE accounts;
 -- +goose StatementEnd

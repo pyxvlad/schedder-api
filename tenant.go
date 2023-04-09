@@ -2,6 +2,7 @@ package schedder
 
 import (
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"gitlab.com/vlad.anghel/schedder-api/database"
@@ -47,7 +48,9 @@ func (a *API) CreateTenant(w http.ResponseWriter, r *http.Request) {
 	accountID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 	request := r.Context().Value(CtxJSON).(*CreateTenantRequest)
 
-	if len(request.Name) < 8 || len(request.Name) > 80 {
+	runes := utf8.RuneCountInString(request.Name)
+
+	if runes < 8 || runes > 80 {
 		jsonError(w, http.StatusBadRequest, "invalid name")
 		return
 	}
@@ -88,7 +91,7 @@ func (a *API) AddTenantMember(w http.ResponseWriter, r *http.Request) {
 
 	err := a.db.AddTenantMember(r.Context(), database.AddTenantMemberParams{TenantID: tenantID, NewMemberID: request.AccountID, IsManager: false, OwnerID: authenticatedID})
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "already member")
+		jsonError(w, http.StatusBadRequest, "already member")
 		return
 	}
 

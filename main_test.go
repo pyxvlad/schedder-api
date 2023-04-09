@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -77,10 +78,18 @@ func unexpect[T comparable](t *testing.T, unexpected T, got T) {
 	}
 }
 
+type TestCodeStore map[string]string
+
+func (cs TestCodeStore) SendVerification(id string, code string) error {
+	cs[id] = code
+	return nil
+}
+
 type ApiTX struct {
 	*schedder.API
 	tx pgx.Tx
 	t  *testing.T
+	codes TestCodeStore
 }
 
 func BeginTx(t *testing.T) ApiTX {
@@ -90,7 +99,8 @@ func BeginTx(t *testing.T) ApiTX {
 	}
 
 	var api ApiTX
-	api.API = schedder.New(tx)
+	api.codes = make(map[string]string)
+	api.API = schedder.New(tx, api.codes, api.codes)
 	api.tx = tx
 	api.t = t
 	return api
@@ -124,7 +134,7 @@ func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
 	return data.AccountID
 }
 
-func (a *ApiTX) registerUserByPhone(phone string, password string) {
+func (a *ApiTX) registerUserByPhone(phone string, password string) uuid.UUID {
 	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
@@ -135,13 +145,72 @@ func (a *ApiTX) registerUserByPhone(phone string, password string) {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	data := schedder.Response{}
+	var data schedder.PostAccountResponse
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
 	}
 
 	expect(a.t, "", data.Error)
+	return data.AccountID
+}
+
+func (a *ApiTX) activateUserByEmail(email string) {
+	b := bytes.Buffer{}
+	var request schedder.VerifyCodeRequest
+	request.Email = email
+	request.Code = a.codes[email]
+
+	err := json.NewEncoder(&b).Encode(request)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+	resp := w.Result()
+	var response schedder.VerifyCodeResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK || response.Error != "" {
+		a.t.Fatalf("Expected %d without error, got %s with error %v", http.StatusOK, resp.Status, response.Error)
+	}
+
+	expect(a.t, email, response.Email)
+}
+
+func (a *ApiTX) activateUserByPhone(phone string) {
+	b := bytes.Buffer{}
+	var request schedder.VerifyCodeRequest
+	request.Phone = phone
+	request.Code = a.codes[phone]
+
+	err := json.NewEncoder(&b).Encode(request)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+	resp := w.Result()
+	var response schedder.VerifyCodeResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK || response.Error != "" {
+		a.t.Fatalf("Expected %d without error, got %s with error %v", http.StatusOK, resp.Status, response.Error)
+	}
+
+	expect(a.t, phone, response.Phone)
 }
 
 func (a *ApiTX) generateToken(email string, password string) (token string) {
@@ -249,9 +318,38 @@ func (a *ApiTX) createTenant(token string, tenant_name string) uuid.UUID {
 
 func (a *ApiTX) createTenantAndAccount(email string, password string, tenant_name string) uuid.UUID {
 	a.registerUserByEmail(email, password)
+	a.activateUserByEmail(email)
 	a.forceBusiness(email, true)
 	token := a.generateToken(email, password)
 	return a.createTenant(token, tenant_name)
+}
+
+func(a *ApiTX) addTenantMember(managerToken string, tenantID uuid.UUID, accountID uuid.UUID) {
+	var request schedder.AddTenantMemberRequest
+	request.AccountID = accountID
+	b := bytes.Buffer{}
+	err := json.NewEncoder(&b).Encode(request)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("POST", "/tenants/" + tenantID.String() + "/members", &b)
+	r.Header.Add("Authorization", "Bearer "+managerToken)
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+
+	var response schedder.Response
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil && err != io.EOF {
+		a.t.Fatal(err)
+	}
+
+	a.t.Log(response.Error)
+
+	expect(a.t, http.StatusOK, resp.StatusCode)
 }
 
 func TestWithInvalidJson(t *testing.T) {

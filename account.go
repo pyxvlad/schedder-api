@@ -158,6 +158,14 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
+
+		// assume that if the verification cannot be sended the user gave an invalid email
+		// TODO: refactor this so we also know when the verification service is down
+		err = a.emailVerifier.SendVerification(accountRequest.Email, code)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid email")
+			return
+		}
 		tx.Commit(ctx)
 	} else if accountRequest.Phone != "" {
 		phone := strings.Map(func(r rune) rune {
@@ -214,6 +222,15 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		resp.AccountID = row.AccountID
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
+
+		// assume that if the verification cannot be sended the user gave an invalid email
+		// TODO: refactor this so we also know when the verification service is down
+		err = a.phoneVerifier.SendVerification(accountRequest.Phone, code)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "invalid phone")
+			return
+		}
+
 		tx.Commit(ctx)
 	} else {
 		jsonError(w, http.StatusBadRequest, "expected phone or email")

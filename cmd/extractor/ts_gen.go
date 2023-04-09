@@ -1,15 +1,65 @@
 package main
 
 import (
-	"text/template"
+	"fmt"
 	"os"
+	"sort"
+	"strings"
+	"text/template"
 )
 
 const tsClassTemplate = `
-class {{.Name}} {
-	{{- range .Fields}}
-	{{.Name}}: {{.TypeScriptType}} = "";
+export class {{.Name}} extends ApiResponse {
+{{- range .Fields}}
+	{{- if ne .Name "error"}}
+	{{.Name}}: {{.TypeScriptType}} = {{.TypeScriptDefault}};
 	{{- end}}
+{{- end}}
+{{- range $name, $arr := .Arrays}}
+	{{$name}}: Array<{{$arr.Name}}>;
+{{- end}}
+}
+`
+
+const tsConnectionService = `
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable, catchError, tap, throwError } from 'rxjs';
+import { GenerateTokenRequest, GenerateTokenResponse } from './client';
+
+@Injectable({
+
+  providedIn: 'root'
+
+})
+export class ConnectionService {
+	constructor(private http: HttpClient){}
+
+	readonly _baseUrl = "http://localhost:2023";
+
+	private handleError(error: HttpErrorResponse) {
+
+		if (error.status === 0) {
+		  // A client-side or network error occurred. Handle it accordingly.
+		  console.error('An error occurred:', error.error);
+		} else {
+		  // The backend returned an unsuccessful response code.
+		  // The response body may contain clues as to what went wrong.
+		  console.error(
+			"Backend returned code " + ${error.status} + ", body was: ", error.error);
+		}
+		// Return an observable with a user-facing error message.
+		return throwError(() => new Error('Something bad happened; please try again later.'));
+	}
+
+{{- range .}}
+	{{.CamelCase}}({{.TypeScriptParameters}}): Observable<{{.TypeScriptOutput false}}>{
+		return this.http.{{.DartMethod}}{{.TypeScriptOutput true}}(this._baseUrl + "{{.TypeScriptPath}}"{{- if .InputString}}, request{{- end}})
+			.pipe(
+				catchError(this.handleError)
+			);
+	}
+{{- end}}
 }
 `
 
@@ -43,7 +93,6 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 
 	delete(used, "API")
 
-
 	t1 := template.New("ts")
 	t1, err := t1.Parse(tsClassTemplate)
 	if err != nil {
@@ -57,12 +106,41 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 	file.WriteString("// " + GeneratedFileWarning + "\n")
 	file.WriteString("// " + GeneratedByMessage + "\n")
 
+	// add directly the ApiResponse class, the hardcoded way
+	file.WriteString("\nclass ApiResponse {\n\terror: ?string = null;\n}\n")
 
-	for name := range used {
-		err = t1.Execute(file, objects[name])
+	keys := make([]string, 0, len(used))
+	for k := range used {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	sort.Slice(endpoints, func(i, j int) bool {
+		return endpoints[i].Name < endpoints[j].Name
+	})
+
+	for _, e := range endpoints {
+		if e.Name == "GetSessionsForAccount" {
+			fmt.Printf("e: %v\n", e)
+		}
+	}
+
+	for _, name := range keys {
+		obj := *objects[name]
+		if obj.Name == "Response" {
+			continue
+		}
+		obj.Name, _ = strings.CutPrefix(obj.Name, "Get")
+		err = t1.Execute(file, obj)
 		if err != nil {
 			panic(err)
 		}
 	}
-}
 
+	t2 := template.New("connection-service")
+	t2.Parse(tsConnectionService)
+	err = t2.Execute(file, endpoints)
+	if err != nil {
+		panic(err)
+	}
+}

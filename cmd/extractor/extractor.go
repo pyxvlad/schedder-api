@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -49,18 +50,20 @@ func (m *Middleware) HTMLRequirement() string {
 	switch m.Name {
 	case "WithJSON[...]":
 		return "Requires JSON input"
-	case "AuthenticatedEndpoint-fm":
+	case "AuthenticatedEndpoint":
 		return "Required Header: <code>Authentication: Bearer $TOKEN</code>"
-	case "WithSessionID-fm":
+	case "WithSessionID":
 		return "Required URL parameter: <code>sessionID</code>"
-	case "WithAccountID-fm":
+	case "WithAccountID":
 		return "Required URL parameter: <code>accountID</code>"
-	case "WithTenantID-fm":
+	case "WithTenantID":
 		return "Required URL parameter: <code>tenantID</code>"
-	case "AdminEndpoint-fm":
+	case "AdminEndpoint":
 		return "Requires the authenticated user to be an <strong>Admin</strong>"
-	case "TenantManagerEndpoint-fm":
+	case "TenantManagerEndpoint":
 		return "Requires the authenticated user to be an <strong>Manager</strong> of <strong>tenantID</strong> from the URL parameter"
+	case "CorsHandler":
+		return "Has CORS policy. For details consult the source code."
 	default:
 		panic("I don't know how to make this into a requirement:" + m.Name)
 	}
@@ -120,9 +123,73 @@ func (e Endpoint) CurlExample() string {
 	return b.String()
 }
 
-// DartMethod converts an endpoint name to a Dart-style method name.
+// DartMethod converts an method name to a Dart-style method name.
+// Also used in TypeScript, so TODO: rename this
 func (e Endpoint) DartMethod() string {
 	return strings.ToLower(e.Method)
+}
+
+func (e Endpoint) CamelCase() string {
+	start := e.Name[0:1]
+	return strings.ToLower(start) + e.Name[1:]
+}
+
+func (e Endpoint) TypeScriptParameters() string {
+	first := true
+	sb := strings.Builder{}
+	r, err := regexp.Compile(`\{.+\}`)
+	if err != nil {
+		panic(err)
+	}
+	subs := r.FindAllString(e.Path, -1)
+	for _, v := range subs {
+		if first {
+			first = false
+		} else {
+			sb.WriteString(", ")
+		}
+		v = strings.TrimPrefix(v, "{")
+		v = strings.TrimSuffix(v, "}")
+		sb.WriteString(v)
+		sb.WriteString(": string")
+
+	}
+
+	if e.Input != nil {
+		if first {
+			first = false
+		} else {
+			sb.WriteString(", ")
+		}
+		sb.WriteString("request: ")
+		sb.WriteString(e.Input.Name)
+	}
+
+	if sb.Len() == 0 {
+		return ""
+	}
+	return sb.String()
+}
+
+func (e Endpoint) TypeScriptOutput(enclosed bool) string {
+	var name string
+	if e.Output == nil {
+		name = "unknown"
+		if enclosed {
+			return ""
+		}
+	}
+
+	if enclosed {
+		return "<" + name + ">"
+	}
+	return name
+}
+
+func (e Endpoint) TypeScriptPath() string {
+	path := strings.ReplaceAll(e.Path, "{", "\" + ")
+	path = strings.ReplaceAll(path, "}", " + \"")
+	return path
 }
 
 // Field represents a field in a JSON request/response
@@ -231,19 +298,33 @@ func (f Field) DartType() string {
 // TypeScriptType returns the type that should be used in TypeScript for this
 // field.
 func (f Field) TypeScriptType() string {
+	typename := ""
 	switch f.TypeName {
-	case "string":
-		return "string"
-	case "UUID":
-		return "string"
-	case "Time":
-		return "string"
-	case "IP":
-		return "string"
+	case "string", "UUID", "Time", "IP":
+		typename = "string"
 	case "bool":
-		return "bool"
+		typename = "boolean"
 	default:
 		panic("don't know how to typescriptify " + f.TypeName)
+	}
+
+	if f.OmitEmpty {
+		return "?" + typename
+	}
+	return typename
+}
+
+func (f Field) TypeScriptDefault() string {
+	if f.OmitEmpty {
+		return "null"
+	}
+	switch f.TypeName {
+	case "string", "UUID", "IP", "Time":
+		return "\"\""
+	case "bool":
+		return "false"
+	default:
+		panic("don't know what the default in TypeScript should be for " + f.TypeName)
 	}
 }
 
@@ -310,6 +391,19 @@ func (o *Object) Sample(level int) string {
 	return sb.String()
 }
 
+func (o *Object) AsTypeScriptFunctionArgs() string {
+	sb := strings.Builder{}
+	for i, f := range o.Fields {
+		if i != 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(f.Name)
+		sb.WriteString(": ")
+		sb.WriteString(f.TypeScriptType())
+	}
+	return sb.String()
+}
+
 // ObjectStore stores all the objects, this type alias is used for convenience
 type ObjectStore map[string]*Object
 
@@ -326,8 +420,26 @@ func fieldFromTag(tag string) (name string, omitempty bool) {
 
 func simpleFunctionName(pc uintptr) string {
 	f := runtime.FuncForPC(pc)
-	_, name, _ := strings.Cut(f.Name(), "schedder-api.")
-	name = strings.TrimPrefix(name, "(*API).")
+
+	name := f.Name()
+
+	lastSlash := strings.LastIndex(f.Name(), "/")
+	name = name[lastSlash+1:]
+
+	if strings.HasPrefix(name, "schedder-api") {
+		_, name, _ = strings.Cut(name, "schedder-api.")
+		name = strings.TrimPrefix(name, "(*API).")
+		name = strings.TrimSuffix(name, "-fm")
+		return name
+	}
+
+	if strings.HasPrefix(name, "cors") {
+		name = strings.TrimPrefix(name, "cors.(*Cors).")
+		name = strings.TrimSuffix(name, "-fm")
+
+		return "Cors" + name
+	}
+
 	return name
 }
 
@@ -396,12 +508,15 @@ func NewMiddleware(middleware func(http.Handler) http.Handler) (mw Middleware) {
 	}
 
 	mw.Name = fpn
+	if len(mw.Name) < 3 {
+		panic("Illegal middleware name:" + mw.Name)
+	}
 	return
 }
 
 func main() {
 
-	api := schedder.New(nil)
+	api := schedder.New(nil, nil, nil)
 
 	b := bytes.Buffer{}
 
