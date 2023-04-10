@@ -52,7 +52,7 @@ type GenerateTokenRequest struct {
 }
 
 type sessionResponse struct {
-	ID             uuid.UUID `json:"session_id"`
+	SessionID      uuid.UUID `json:"session_id"`
 	ExpirationDate time.Time `json:"expiration_date"`
 	IP             net.IP    `json:"ip"`
 	Device         string    `json:"device"`
@@ -81,6 +81,7 @@ type SetBusinessRequest struct {
 }
 
 const BcryptRounds = 10
+const PhoneLength = 12
 
 func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 	// TODO: move this outside, but where?
@@ -106,7 +107,10 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var resp PostAccountResponse
-	passwordBytes, err := bcrypt.GenerateFromPassword([]byte(accountRequest.Password), BcryptRounds)
+	passwordBytes, err := bcrypt.GenerateFromPassword(
+		[]byte(accountRequest.Password), BcryptRounds,
+	)
+
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -159,8 +163,10 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 		resp.Email = row.Email.String
 		resp.Phone = row.Phone.String
 
-		// assume that if the verification cannot be sended the user gave an invalid email
-		// TODO: refactor this so we also know when the verification service is down
+		// assume that if the verification cannot be sended the user gave an
+		// invalid email
+		// TODO: refactor this so we also know when the verification service
+		// is down
 		err = a.emailVerifier.SendVerification(accountRequest.Email, code)
 		if err != nil {
 			jsonError(w, http.StatusBadRequest, "invalid email")
@@ -175,11 +181,15 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 			return -1
 		}, accountRequest.Phone)
 
-		if !strings.HasPrefix(phone, "+") && (strings.HasPrefix(phone, "07") || strings.HasPrefix(phone, "02")) {
+		hasPlus := !strings.HasPrefix(phone, "+")
+		hasMobilePrefix := strings.HasPrefix(phone, "07")
+		hasTelephonePrefix := strings.HasPrefix(phone, "02")
+
+		if !hasPlus && (hasMobilePrefix || hasTelephonePrefix) {
 			phone = "+4" + phone
 		}
 
-		if len(phone) != 12 {
+		if len(phone) != PhoneLength {
 			jsonError(w, http.StatusBadRequest, "phone too short/long")
 			return
 		}
@@ -207,7 +217,7 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
-	
+
 		cvcp := database.CreateVerificationCodeParams{
 			AccountID:        row.AccountID,
 			VerificationCode: code,
@@ -240,6 +250,8 @@ func (a *API) PostAccount(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, http.StatusCreated, resp)
 }
 
+const minimumLengthForDevice = 8
+
 func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	tokenRequest := r.Context().Value(CtxJSON).(*GenerateTokenRequest)
 
@@ -262,13 +274,17 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if len(tokenRequest.Device) < 8 {
+	if len(tokenRequest.Device) < minimumLengthForDevice {
 		jsonError(w, http.StatusBadRequest, "device name too short")
 		return
 	}
 
 	var resp GenerateTokenResponse
 	password := ""
+	if tokenRequest.Email == "" && tokenRequest.Phone == "" {
+		jsonError(w, http.StatusBadRequest, "expected phone or email")
+		return
+	}
 	if tokenRequest.Email != "" {
 		row, err := a.db.GetPasswordByEmail(r.Context(), sql.NullString{String: tokenRequest.Email, Valid: true})
 		password = row.Password
@@ -285,9 +301,6 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "no user with phone")
 			return
 		}
-	} else {
-		jsonError(w, http.StatusBadRequest, "expected phone or email")
-		return
 	}
 
 	err := bcrypt.CompareHashAndPassword([]byte(password), []byte(tokenRequest.Password))

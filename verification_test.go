@@ -49,7 +49,7 @@ func TestActivateAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, r)
@@ -86,7 +86,7 @@ func TestVerifyWithoutEmailOrPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, r)
@@ -122,7 +122,7 @@ func TestActivateAccountWithInvalidCode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, r)
@@ -155,7 +155,7 @@ func TestActivateAccountWithInvalidEmail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, r)
@@ -188,7 +188,7 @@ func TestActivateAccountWithInvalidPhone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	api.ServeHTTP(w, r)

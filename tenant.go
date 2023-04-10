@@ -18,8 +18,8 @@ type CreateTenantResponse struct {
 }
 
 type tenantsResponse struct {
-	TenantID   uuid.UUID `json:"tenant_id"`
-	TenantName string    `json:"name"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	Name     string    `json:"name"`
 }
 
 type GetTenantsResponse struct {
@@ -78,7 +78,7 @@ func (a *API) GetTenants(w http.ResponseWriter, r *http.Request) {
 	response.Tenants = make([]tenantsResponse, 0, len(tenants))
 
 	for _, t := range tenants {
-		response.Tenants = append(response.Tenants, tenantsResponse{TenantID: t.TenantID, TenantName: t.TenantName})
+		response.Tenants = append(response.Tenants, tenantsResponse{TenantID: t.TenantID, Name: t.TenantName})
 	}
 
 	jsonResp(w, http.StatusOK, response)

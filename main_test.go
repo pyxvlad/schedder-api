@@ -93,6 +93,7 @@ type ApiTX struct {
 }
 
 func BeginTx(t *testing.T) ApiTX {
+	t.Helper()
 	tx, err := conn.Begin(context.Background())
 	if err != nil {
 		t.Fatalf("testing: BeginTx: %e", err)
@@ -114,7 +115,7 @@ func (a *ApiTX) Rollback() {
 }
 
 func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
-	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
+	req := httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
 
@@ -135,7 +136,7 @@ func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
 }
 
 func (a *ApiTX) registerUserByPhone(phone string, password string) uuid.UUID {
-	req := httptest.NewRequest("POST", "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
+	req := httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
 
@@ -166,7 +167,7 @@ func (a *ApiTX) activateUserByEmail(email string) {
 		a.t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	a.ServeHTTP(w, r)
@@ -195,7 +196,7 @@ func (a *ApiTX) activateUserByPhone(phone string) {
 		a.t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/accounts/self/verify", &b)
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/verify", &b)
 	w := httptest.NewRecorder()
 
 	a.ServeHTTP(w, r)
@@ -223,7 +224,7 @@ func (a *ApiTX) generateToken(email string, password string) (token string) {
 		a.t.Fatalf("generate_token: couldn't generate json")
 	}
 
-	req := httptest.NewRequest("POST", "/accounts/self/sessions", &b)
+	req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &b)
 
 	req.RemoteAddr = "127.0.0.1"
 
@@ -247,7 +248,7 @@ func (a *ApiTX) generateToken(email string, password string) (token string) {
 }
 
 func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
-	req := httptest.NewRequest("GET", "/accounts/self/sessions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/accounts/self/sessions", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -260,7 +261,7 @@ func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
 
 	session_ids = make([]uuid.UUID, 0)
 	for _, s := range response.Sessions {
-		session_ids = append(session_ids, s.ID)
+		session_ids = append(session_ids, s.SessionID)
 	}
 	return session_ids
 }
@@ -300,7 +301,7 @@ func (a *ApiTX) createTenant(token string, tenant_name string) uuid.UUID {
 	buff := bytes.Buffer{}
 	json.NewEncoder(&buff).Encode(request)
 
-	r := httptest.NewRequest("POST", "/tenants", &buff)
+	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+token)
 
@@ -333,7 +334,7 @@ func(a *ApiTX) addTenantMember(managerToken string, tenantID uuid.UUID, accountI
 		a.t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
 	r.Header.Add("Authorization", "Bearer "+managerToken)
 	w := httptest.NewRecorder()
 
@@ -354,8 +355,8 @@ func(a *ApiTX) addTenantMember(managerToken string, tenantID uuid.UUID, accountI
 
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{
-		{"POST", "/accounts"},
-		{"POST", "/accounts/self/sessions"},
+		{http.MethodPost, "/accounts"},
+		{http.MethodPost, "/accounts/self/sessions"},
 	}
 
 	for _, v := range testdata {

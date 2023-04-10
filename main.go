@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,7 +16,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
-	_ "github.com/jackc/pgx/v4/stdlib" // enable the stdlib adapter of pgx, used for goose migrations
+
+	// Enable the stdlib adapter of pgx, used for goose migrations.
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"gitlab.com/vlad.anghel/schedder-api/database"
 )
 
@@ -32,9 +35,9 @@ const (
 
 // Struct keeping track of all the states, pretty much a singleton
 type API struct {
-	db   *database.Queries
-	txlike database.TxLike
-	mux  *chi.Mux
+	db            *database.Queries
+	txlike        database.TxLike
+	mux           *chi.Mux
 	emailVerifier Verifier
 	phoneVerifier Verifier
 }
@@ -43,19 +46,25 @@ type Response struct {
 	Error string `json:"error,omitempty"`
 }
 
-func New(txlike database.TxLike, emailVerifier Verifier, phoneVerifier Verifier) *API {
+func New(
+	txlike database.TxLike, emailVerifier Verifier, phoneVerifier Verifier,
+) *API {
 	api := new(API)
 	api.txlike = txlike
 	api.db = database.New(api.txlike)
 	api.mux = chi.NewRouter()
 	// api.mux.Use(WithCORS)
 	api.mux.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedOrigins: []string{"https://*", "http://*"},
+		AllowedMethods: []string{
+			"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD",
+		},
+		AllowedHeaders: []string{
+			"Accept", "Authorization", "Content-Type", "X-CSRF-Token",
+		},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
-		MaxAge:           300, // Maximum value not ignored by any of major browsers
+		MaxAge:           300, // Maximum value not ignored by any of browsers
 	}))
 
 	api.mux.Route("/accounts", func(r chi.Router) {
@@ -63,8 +72,12 @@ func New(txlike database.TxLike, emailVerifier Verifier, phoneVerifier Verifier)
 		r.Route("/self", func(r chi.Router) {
 			r.With(WithJSON[VerifyCodeRequest]).Post("/verify", api.VerifyCode)
 			r.Route("/sessions", func(r chi.Router) {
-				r.With(WithJSON[GenerateTokenRequest]).Post("/", api.GenerateToken)
-				r.With(api.AuthenticatedEndpoint).Get("/", api.GetSessionsForAccount)
+				r.With(WithJSON[GenerateTokenRequest]).Post(
+					"/", api.GenerateToken,
+				)
+				r.With(api.AuthenticatedEndpoint).Get(
+					"/", api.GetSessionsForAccount,
+				)
 				r.Route("/{sessionID}", func(r chi.Router) {
 					r.Use(api.AuthenticatedEndpoint)
 					r.Use(api.WithSessionID)
@@ -72,23 +85,39 @@ func New(txlike database.TxLike, emailVerifier Verifier, phoneVerifier Verifier)
 				})
 			})
 		})
-		r.With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Get("/by-email/{email}", api.GetAccountByEmailAsAdmin)
+		r.With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Get(
+			"/by-email/{email}", api.GetAccountByEmailAsAdmin,
+		)
 		r.Route("/{accountID}", func(r chi.Router) {
-			r.Use(api.WithAccountID)
-			r.With(WithJSON[SetAdminRequest], api.AuthenticatedEndpoint, api.AdminEndpoint).Post("/admin", api.SetAdmin)
-			r.With(WithJSON[SetBusinessRequest], api.AuthenticatedEndpoint, api.AdminEndpoint).Post("/business", api.SetBusiness)
+			r.Use(
+				api.WithAccountID,
+				api.AuthenticatedEndpoint,
+				api.AdminEndpoint,
+			)
+			r.With(WithJSON[SetAdminRequest]).Post("/admin", api.SetAdmin)
+			r.With(WithJSON[SetBusinessRequest]).Post(
+				"/business", api.SetBusiness,
+			)
 		})
 		//r.Use(api.AuthenticatedEndpoint)
 		//r.Get("/sessions", api.GetSessionsForAccount)
 	})
 
 	api.mux.Route("/tenants", func(r chi.Router) {
-		r.With(WithJSON[CreateTenantRequest], api.AuthenticatedEndpoint).Post("/", api.CreateTenant)
+		r.With(WithJSON[CreateTenantRequest], api.AuthenticatedEndpoint).Post(
+			"/", api.CreateTenant,
+		)
 		r.Get("/", api.GetTenants)
 		r.Route("/{tenantID}", func(r chi.Router) {
-			r.Use(api.WithTenantID)
-			r.With(WithJSON[AddTenantMemberRequest], api.AuthenticatedEndpoint, api.TenantManagerEndpoint).Post("/members", api.AddTenantMember)
-			r.With(api.AuthenticatedEndpoint, api.TenantManagerEndpoint).Get("/members", api.GetTenantMembers)
+			r.Use(
+				api.WithTenantID,
+				api.AuthenticatedEndpoint,
+				api.TenantManagerEndpoint,
+			)
+			r.With(WithJSON[AddTenantMemberRequest]).Post(
+				"/members", api.AddTenantMember,
+			)
+			r.Get("/members", api.GetTenantMembers)
 		})
 	})
 	api.emailVerifier = emailVerifier
@@ -112,13 +141,18 @@ func (a *API) GetDB() *database.Queries {
 func RequiredEnv(name string, example string) string {
 	env, found := os.LookupEnv(name)
 	if !found {
-		panic("env var " + name + " not defined, example: " + name + "=" + example)
+		msg := fmt.Sprintf(
+			"env var %s not defined, example: %s=%s", name, name, example,
+		)
+		panic(msg)
 	}
 	return env
 }
 
 func Run() {
-	postgresURI := RequiredEnv("SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db")
+	postgresURI := RequiredEnv(
+		"SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db",
+	)
 	log.Printf("INFO: connecting to Postgres using: %#v", postgresURI)
 	stdDB, err := sql.Open("pgx", postgresURI)
 	if err != nil {
@@ -144,7 +178,6 @@ func Run() {
 	}
 	if err := conn.Close(context.Background()); err != nil {
 		panic(err)
-
 	}
 }
 
@@ -161,7 +194,7 @@ func jsonResp[T any](w http.ResponseWriter, statusCode int, response T) {
 }
 
 func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		parts := strings.Split(auth, " ")
 		if parts[0] != "Bearer" {
@@ -181,10 +214,12 @@ func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 			return
 		}
 
-		r = r.WithContext(context.WithValue(r.Context(), CtxAuthenticatedID, authenticatedID))
+		newctx := context.WithValue(
+			r.Context(), CtxAuthenticatedID, authenticatedID,
+		)
+		r = r.WithContext(newctx)
 		next.ServeHTTP(w, r)
-	}
-	return http.HandlerFunc(fn)
+	})
 }
 
 func (a *API) AdminEndpoint(next http.Handler) http.Handler {
@@ -267,8 +302,11 @@ func (a *API) TenantManagerEndpoint(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 		tenantID := r.Context().Value(CtxTenantID).(uuid.UUID)
+		params := database.IsTenantManagerParams{
+			TenantID: tenantID, AccountID: authenticatedID,
+		}
 
-		isManager, err := a.db.IsTenantManager(r.Context(), database.IsTenantManagerParams{TenantID: tenantID, AccountID: authenticatedID})
+		isManager, err := a.db.IsTenantManager(r.Context(), params)
 		if err != nil {
 			jsonError(w, http.StatusInternalServerError, "yes")
 			return

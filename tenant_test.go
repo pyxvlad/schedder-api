@@ -29,7 +29,7 @@ func TestCreateTenant(t *testing.T) {
 	buff := bytes.Buffer{}
 	json.NewEncoder(&buff).Encode(request)
 
-	r := httptest.NewRequest("POST", "/tenants", &buff)
+	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 
@@ -58,7 +58,7 @@ func TestCreateTenantWithShortName(t *testing.T) {
 	buff := bytes.Buffer{}
 	json.NewEncoder(&buff).Encode(request)
 
-	r := httptest.NewRequest("POST", "/tenants", &buff)
+	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 
@@ -85,7 +85,7 @@ func TestGetTenants(t *testing.T) {
 
 	api.createTenantAndAccount(email, password, tenant_name)
 
-	r := httptest.NewRequest("GET", "/tenants", nil)
+	r := httptest.NewRequest(http.MethodGet, "/tenants", nil)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	api.ServeHTTP(w, r)
@@ -94,13 +94,18 @@ func TestGetTenants(t *testing.T) {
 	expect(t, http.StatusOK, resp.StatusCode)
 
 	var data schedder.GetTenantsResponse
-	json.NewDecoder(resp.Body).Decode(&data)
+
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	expect(t, "", data.Error)
 
 	found := false
+
 	for _, tenant := range data.Tenants {
-		if tenant.TenantName == tenant_name {
+		if tenant.Name == tenant_name {
 			found = true
 		}
 	}
@@ -131,7 +136,7 @@ func TestAddTenantMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -176,7 +181,7 @@ func TestAddTenantMemberWhenAlreadyAMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest("POST", "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -225,7 +230,7 @@ func TestGetTenantMembers(t *testing.T) {
 	api.activateUserByEmail(another_email)
 
 
-	r := httptest.NewRequest("GET", "/tenants/" + tenantID.String() + "/members", nil)
+	r := httptest.NewRequest(http.MethodGet, "/tenants/" + tenantID.String() + "/members", nil)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -234,6 +239,7 @@ func TestGetTenantMembers(t *testing.T) {
 	resp := w.Result()
 
 	var response schedder.GetTenantMembersResponse
+
 	t.Log(resp.Status)
 	err := json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
@@ -245,6 +251,7 @@ func TestGetTenantMembers(t *testing.T) {
 
 	// there should be 2 members in the tenant (the manager and the other one)
 	members := 0
+
 	for _, mr := range response.Members {
 		if mr.AccountID == accountID  || mr.AccountID == otherAccountID {
 			members++
