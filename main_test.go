@@ -25,7 +25,10 @@ var conn *pgxpool.Pool
 func TestMain(m *testing.M) {
 	var err error
 
-	pgURI := schedder.RequiredEnv("SCHEDDER_TEST_POSTGRES", "postgres://test_user@localhost/schedder_test")
+	pgURI := schedder.RequiredEnv(
+		"SCHEDDER_TEST_POSTGRES",
+		"postgres://test_user@localhost/schedder_test",
+	)
 	stdDB, err := sql.Open("pgx", pgURI)
 	if err != nil {
 		panic(err)
@@ -44,7 +47,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func expect[T comparable](t *testing.T, expected T, got T) {
+func expect[T comparable](t *testing.T, expected, got T) {
+	t.Helper()
 	if expected != got {
 		_, file, line, ok := runtime.Caller(1)
 		if !ok {
@@ -61,7 +65,8 @@ func expect[T comparable](t *testing.T, expected T, got T) {
 	}
 }
 
-func unexpect[T comparable](t *testing.T, unexpected T, got T) {
+func unexpect[T comparable](t *testing.T, unexpected, got T) {
+	t.Helper()
 	if unexpected == got {
 		_, file, line, ok := runtime.Caller(1)
 		if !ok {
@@ -74,32 +79,34 @@ func unexpect[T comparable](t *testing.T, unexpected T, got T) {
 		}
 		file = strings.TrimPrefix(file, wd+"/")
 
-		t.Fatalf("%s:%d: unexpected %#v, got %#v\n", file, line, unexpected, got)
+		t.Fatalf(
+			"%s:%d: unexpected %#v, got %#v\n", file, line, unexpected, got,
+		)
 	}
 }
 
 type TestCodeStore map[string]string
 
-func (cs TestCodeStore) SendVerification(id string, code string) error {
+func (cs TestCodeStore) SendVerification(id, code string) error {
 	cs[id] = code
 	return nil
 }
 
-type ApiTX struct {
+type APITX struct {
 	*schedder.API
-	tx pgx.Tx
-	t  *testing.T
+	tx    pgx.Tx
+	t     *testing.T
 	codes TestCodeStore
 }
 
-func BeginTx(t *testing.T) ApiTX {
+func BeginTx(t *testing.T) APITX {
 	t.Helper()
 	tx, err := conn.Begin(context.Background())
 	if err != nil {
 		t.Fatalf("testing: BeginTx: %e", err)
 	}
 
-	var api ApiTX
+	var api APITX
 	api.codes = make(map[string]string)
 	api.API = schedder.New(tx, api.codes, api.codes)
 	api.tx = tx
@@ -107,15 +114,18 @@ func BeginTx(t *testing.T) ApiTX {
 	return api
 }
 
-func (a *ApiTX) Rollback() {
+func (a *APITX) Rollback() {
 	err := a.tx.Rollback(context.Background())
 	if err != nil {
 		a.t.Fatalf("testing: RollbackTx: %e", err)
 	}
 }
 
-func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
-	req := httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader("{\"email\": \""+email+"\", \"password\": \""+password+"\"}"))
+func (a *APITX) registerUserByEmail(email, password string) uuid.UUID {
+	reader := strings.NewReader(
+		"{\"email\": \"" + email + "\", \"password\": \"" + password + "\"}",
+	)
+	req := httptest.NewRequest(http.MethodPost, "/accounts", reader)
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
 
@@ -125,7 +135,7 @@ func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	data := schedder.PostAccountResponse{}
+	data := schedder.AccountCreationResponse{}
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
@@ -135,8 +145,11 @@ func (a *ApiTX) registerUserByEmail(email string, password string) uuid.UUID {
 	return data.AccountID
 }
 
-func (a *ApiTX) registerUserByPhone(phone string, password string) uuid.UUID {
-	req := httptest.NewRequest(http.MethodPost, "/accounts", strings.NewReader("{\"phone\": \""+phone+"\", \"password\": \""+password+"\"}"))
+func (a *APITX) registerUserByPhone(phone, password string) uuid.UUID {
+	reader := strings.NewReader(
+		"{\"phone\": \"" + phone + "\", \"password\": \"" + password + "\"}",
+	)
+	req := httptest.NewRequest(http.MethodPost, "/accounts", reader)
 	w := httptest.NewRecorder()
 	a.ServeHTTP(w, req)
 
@@ -146,7 +159,7 @@ func (a *ApiTX) registerUserByPhone(phone string, password string) uuid.UUID {
 		a.t.Fatalf("register_user: got status %s", resp.Status)
 	}
 
-	var data schedder.PostAccountResponse
+	var data schedder.AccountCreationResponse
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
@@ -156,7 +169,7 @@ func (a *ApiTX) registerUserByPhone(phone string, password string) uuid.UUID {
 	return data.AccountID
 }
 
-func (a *ApiTX) activateUserByEmail(email string) {
+func (a *APITX) activateUserByEmail(email string) {
 	b := bytes.Buffer{}
 	var request schedder.VerifyCodeRequest
 	request.Email = email
@@ -179,13 +192,16 @@ func (a *ApiTX) activateUserByEmail(email string) {
 	}
 
 	if resp.StatusCode != http.StatusOK || response.Error != "" {
-		a.t.Fatalf("Expected %d without error, got %s with error %v", http.StatusOK, resp.Status, response.Error)
+		a.t.Fatalf(
+			"Expected %d without error, got %s with error %v",
+			http.StatusOK, resp.Status, response.Error,
+		)
 	}
 
 	expect(a.t, email, response.Email)
 }
 
-func (a *ApiTX) activateUserByPhone(phone string) {
+func (a *APITX) activateUserByPhone(phone string) {
 	b := bytes.Buffer{}
 	var request schedder.VerifyCodeRequest
 	request.Phone = phone
@@ -208,18 +224,25 @@ func (a *ApiTX) activateUserByPhone(phone string) {
 	}
 
 	if resp.StatusCode != http.StatusOK || response.Error != "" {
-		a.t.Fatalf("Expected %d without error, got %s with error %v", http.StatusOK, resp.Status, response.Error)
+		a.t.Fatalf(
+			"Expected %d without error, got %s with error %v",
+			http.StatusOK, resp.Status, response.Error,
+		)
 	}
 
 	expect(a.t, phone, response.Phone)
 }
 
-func (a *ApiTX) generateToken(email string, password string) (token string) {
-	req_data := schedder.GenerateTokenRequest{Email: email, Password: password, Device: "schedder testing"}
+func (a *APITX) generateToken(email, password string) (token string) {
+	request := schedder.TokenGenerationRequest{
+		Email:    email,
+		Password: password,
+		Device:   "schedder testing",
+	}
 
 	var b bytes.Buffer
 
-	err := json.NewEncoder(&b).Encode(req_data)
+	err := json.NewEncoder(&b).Encode(request)
 	if err != nil {
 		a.t.Fatalf("generate_token: couldn't generate json")
 	}
@@ -235,7 +258,7 @@ func (a *ApiTX) generateToken(email string, password string) (token string) {
 	resp := w.Result()
 	expect(a.t, http.StatusCreated, resp.StatusCode)
 
-	var data schedder.GenerateTokenResponse
+	var data schedder.TokenGenerationResponse
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		a.t.Fatal(err)
@@ -243,11 +266,10 @@ func (a *ApiTX) generateToken(email string, password string) (token string) {
 
 	expect(a.t, "", data.Error)
 
-	token = data.Token
-	return
+	return data.Token
 }
 
-func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
+func (a *APITX) getSessions(token string) (sessionIDs []uuid.UUID) {
 	req := httptest.NewRequest(http.MethodGet, "/accounts/self/sessions", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -256,50 +278,62 @@ func (a *ApiTX) getSessions(token string) (session_ids []uuid.UUID) {
 
 	resp := w.Result()
 
-	var response schedder.GetSessionsForAccountResponse
+	var response schedder.SessionsForAccountResponse
 	json.NewDecoder(resp.Body).Decode(&response)
 
-	session_ids = make([]uuid.UUID, 0)
+	sessionIDs = make([]uuid.UUID, 0)
 	for _, s := range response.Sessions {
-		session_ids = append(session_ids, s.SessionID)
+		sessionIDs = append(sessionIDs, s.SessionID)
 	}
-	return session_ids
+	return sessionIDs
 }
 
-func (a *ApiTX) findAccountByEmail(email string) uuid.UUID {
-	account, err := a.GetDB().FindAccountByEmail(context.Background(), sql.NullString{String: email, Valid: true})
+func (a *APITX) findAccountByEmail(email string) uuid.UUID {
+	account, err := a.DB().FindAccountByEmail(
+		context.Background(), sql.NullString{String: email, Valid: true},
+	)
 	if err != nil {
 		panic(err)
 	}
 	return account.AccountID
 }
 
-func (a *ApiTX) forceAdmin(email string, admin bool) {
-	db := a.GetDB()
+func (a *APITX) forceAdmin(email string, admin bool) {
+	db := a.DB()
 	accountID := a.findAccountByEmail(email)
-	err := db.SetAdminForAccount(context.Background(), database.SetAdminForAccountParams{AccountID: accountID, IsAdmin: admin})
+	safap := database.SetAdminForAccountParams{
+		AccountID: accountID,
+		IsAdmin:   admin,
+	}
+	err := db.SetAdminForAccount(context.Background(), safap)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (a *ApiTX) forceBusiness(email string, business bool) {
-	db := a.GetDB()
+func (a *APITX) forceBusiness(email string, business bool) {
+	db := a.DB()
 	accountID := a.findAccountByEmail(email)
-	err := db.SetBusinessForAccount(context.Background(), database.SetBusinessForAccountParams{AccountID: accountID, IsBusiness: business})
+	sbfap := database.SetBusinessForAccountParams{
+		AccountID:  accountID,
+		IsBusiness: business,
+	}
+	err := db.SetBusinessForAccount(context.Background(), sbfap)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func (a *ApiTX) createTenant(token string, tenant_name string) uuid.UUID {
-
+func (a *APITX) createTenant(token, tenantName string) uuid.UUID {
 	var request schedder.CreateTenantRequest
 
-	request.Name = tenant_name
+	request.Name = tenantName
 
 	buff := bytes.Buffer{}
-	json.NewEncoder(&buff).Encode(request)
+	err := json.NewEncoder(&buff).Encode(request)
+	if err != nil {
+		a.t.Fatal(err)
+	}
 
 	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
@@ -310,22 +344,26 @@ func (a *ApiTX) createTenant(token string, tenant_name string) uuid.UUID {
 	resp := w.Result()
 	expect(a.t, http.StatusCreated, resp.StatusCode)
 	var response schedder.CreateTenantResponse
-	err := json.NewDecoder(resp.Body).Decode(&response)
+	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		a.t.Fatal(err)
 	}
 	return response.TenantID
 }
 
-func (a *ApiTX) createTenantAndAccount(email string, password string, tenant_name string) uuid.UUID {
+func (a *APITX) createTenantAndAccount(
+	email, password, tenantName string,
+) uuid.UUID {
 	a.registerUserByEmail(email, password)
 	a.activateUserByEmail(email)
 	a.forceBusiness(email, true)
 	token := a.generateToken(email, password)
-	return a.createTenant(token, tenant_name)
+	return a.createTenant(token, tenantName)
 }
 
-func(a *ApiTX) addTenantMember(managerToken string, tenantID uuid.UUID, accountID uuid.UUID) {
+func (a *APITX) addTenantMember(
+	managerToken string, tenantID, accountID uuid.UUID,
+) {
 	var request schedder.AddTenantMemberRequest
 	request.AccountID = accountID
 	b := bytes.Buffer{}
@@ -334,7 +372,9 @@ func(a *ApiTX) addTenantMember(managerToken string, tenantID uuid.UUID, accountI
 		a.t.Fatal(err)
 	}
 
-	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(
+		http.MethodPost, "/tenants/"+tenantID.String()+"/members", &b,
+	)
 	r.Header.Add("Authorization", "Bearer "+managerToken)
 	w := httptest.NewRecorder()
 
@@ -367,7 +407,9 @@ func TestWithInvalidJson(t *testing.T) {
 			method := v[0]
 			endpoint := v[1]
 
-			req := httptest.NewRequest(method, endpoint, strings.NewReader("}totally-not-json{"))
+			req := httptest.NewRequest(
+				method, endpoint, strings.NewReader("}totally-not-json{"),
+			)
 			w := httptest.NewRecorder()
 
 			a.ServeHTTP(w, req)

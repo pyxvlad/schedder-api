@@ -130,7 +130,7 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 		if obj.Name == "Response" {
 			continue
 		}
-		obj.Name, _ = strings.CutPrefix(obj.Name, "Get")
+		obj.Name = strings.TrimPrefix(obj.Name, "Get")
 		err = t1.Execute(file, obj)
 		if err != nil {
 			panic(err)

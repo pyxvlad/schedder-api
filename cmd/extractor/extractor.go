@@ -114,7 +114,7 @@ func (e Endpoint) CurlExample() string {
 	b.WriteRune('\n')
 	if e.Input != nil {
 		b.WriteString(" --data '")
-		b.WriteString(e.Input.Sample(0))
+		b.WriteString(e.Input.Sample(0, false))
 		b.WriteString("'\n")
 	}
 	b.WriteString(" localhost:2023")
@@ -358,7 +358,7 @@ func Indent(level int) string {
 }
 
 // Sample generates a sample JSON.
-func (o *Object) Sample(level int) string {
+func (o *Object) Sample(level int, showOmitEmpty bool) string {
 	sb := strings.Builder{}
 	sb.WriteString(Indent(level))
 	sb.WriteString("{\n")
@@ -368,7 +368,7 @@ func (o *Object) Sample(level int) string {
 		if i != (len(o.Fields) - 1) {
 			sb.WriteRune(',')
 		}
-		if f.OmitEmpty {
+		if f.OmitEmpty && showOmitEmpty {
 			sb.WriteString(" // omit if empty")
 		}
 		sb.WriteRune('\n')
@@ -379,7 +379,7 @@ func (o *Object) Sample(level int) string {
 		sb.WriteString(": ")
 		sb.WriteString("[\n")
 
-		s := a.Sample(level + 2)
+		s := a.Sample(level + 2, showOmitEmpty)
 		sb.WriteString(s)
 		sb.WriteString("\n")
 
@@ -422,6 +422,7 @@ func simpleFunctionName(pc uintptr) string {
 	f := runtime.FuncForPC(pc)
 
 	name := f.Name()
+	fmt.Printf("name: %v\n", name)
 
 	lastSlash := strings.LastIndex(f.Name(), "/")
 	name = name[lastSlash+1:]
@@ -515,7 +516,6 @@ func NewMiddleware(middleware func(http.Handler) http.Handler) (mw Middleware) {
 }
 
 func main() {
-
 	api := schedder.New(nil, nil, nil)
 
 	b := bytes.Buffer{}
@@ -647,17 +647,21 @@ func main() {
 			}
 			fmt.Printf("\tmid: %v\n", m)
 		}
-
-		ep.Output = objects[ep.Name+"Response"]
+		if ep.Input != nil {
+			base := strings.TrimSuffix(ep.Input.Name, "Request")
+			ep.Output = objects[base + "Response"]
+		} else {
+			ep.Output = objects[ep.Name+"Response"]
+		}
 
 		if ep.Input != nil {
 			fmt.Printf("\trequest: %s\n", ep.Input.Name)
-			fmt.Printf("\tsample request: \n%s\n", ep.Input.Sample(1))
+			fmt.Printf("\tsample request: \n%s\n", ep.Input.Sample(1, true))
 		}
 
 		if ep.Output != nil {
 			fmt.Printf("\tresponse: %s\n", ep.Output.Name)
-			fmt.Printf("\tsample response: \n%s\n", ep.Output.Sample(1))
+			fmt.Printf("\tsample response: \n%s\n", ep.Output.Sample(1, true))
 		}
 	}
 

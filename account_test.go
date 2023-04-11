@@ -24,7 +24,9 @@ func TestRegisterWithEmail(t *testing.T) {
 
 	email := "mail@gmail.com"
 	password := "hackmetoday"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	err := json.NewEncoder(&buffer).Encode(
+		schedder.AccountCreationRequest{Email: email, Password: password},
+	)
 
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +39,7 @@ func TestRegisterWithEmail(t *testing.T) {
 
 	resp := w.Result()
 
-	var response schedder.PostAccountResponse
+	var response schedder.AccountCreationResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +59,8 @@ func TestRegisterWithShortPassword(t *testing.T) {
 	defer api.Rollback()
 
 	var buffer bytes.Buffer
-	json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: "some@gmail.com", Password: "meow"})
+	acr := schedder.AccountCreationRequest{Email: "some@gmail.com", Password: "meow"}
+	json.NewEncoder(&buffer).Encode(acr)
 	req := httptest.NewRequest(http.MethodPost, "/accounts", &buffer)
 	w := httptest.NewRecorder()
 
@@ -65,7 +68,7 @@ func TestRegisterWithShortPassword(t *testing.T) {
 
 	resp := w.Result()
 
-	var response schedder.PostAccountResponse
+	var response schedder.AccountCreationResponse
 	err := json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +77,6 @@ func TestRegisterWithShortPassword(t *testing.T) {
 	t.Logf("%#v", response.Error)
 	expect(t, "password too short", response.Error)
 	expect(t, http.StatusBadRequest, resp.StatusCode)
-
 }
 
 func TestRegisterWithoutEmailOrPhone(t *testing.T) {
@@ -83,7 +85,7 @@ func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 	defer api.Rollback()
 
 	var buffer bytes.Buffer
-	json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Password: "hackmenow"})
+	json.NewEncoder(&buffer).Encode(schedder.AccountCreationRequest{Password: "hackmenow"})
 	req := httptest.NewRequest(http.MethodPost, "/accounts", &buffer)
 	w := httptest.NewRecorder()
 
@@ -91,7 +93,7 @@ func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 
 	resp := w.Result()
 
-	var response schedder.PostAccountResponse
+	var response schedder.AccountCreationResponse
 	err := json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
@@ -104,13 +106,17 @@ func TestRegisterWithoutEmailOrPhone(t *testing.T) {
 
 func TestRegisterWithPhone(t *testing.T) {
 	t.Parallel()
-	testdata := [][2]string{{"+40723123123", "+40723123123"}, {"0723123123", "+40723123123"}, {"+4 0 7 2 3 1 2 3 1 2 3", "+40723123123"}}
+	testdata := [][2]string{
+		{"+40723123123", "+40723123123"},
+		{"0723123123", "+40723123123"},
+		{"+4 0 7 2 3 1 2 3 1 2 3", "+40723123123"},
+	}
 
 	for _, v := range testdata {
-		loop_data := new([2]string)
-		copy(loop_data[:], v[:])
+		testData := new([2]string)
+		copy(testData[:], v[:])
 		t.Run(v[0], func(t *testing.T) {
-			data := *loop_data
+			data := *testData
 			t.Parallel()
 
 			api := BeginTx(t)
@@ -121,7 +127,11 @@ func TestRegisterWithPhone(t *testing.T) {
 			phone := data[0]
 			expected := data[1]
 			password := "hackmenow"
-			err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+			acr := schedder.AccountCreationRequest{
+				Phone:    phone,
+				Password: password,
+			}
+			err := json.NewEncoder(&buffer).Encode(acr)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +142,7 @@ func TestRegisterWithPhone(t *testing.T) {
 
 			resp := w.Result()
 
-			var response schedder.PostAccountResponse
+			var response schedder.AccountCreationResponse
 			err = json.NewDecoder(resp.Body).Decode(&response)
 			if err != nil {
 				t.Fatal(err)
@@ -155,7 +165,8 @@ func TestRegisterWithShortPhone(t *testing.T) {
 
 	phone := "+4 0712 123 1 3"
 	password := "hackmenow"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+	acr := schedder.AccountCreationRequest{Phone: phone, Password: password}
+	err := json.NewEncoder(&buffer).Encode(acr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +197,8 @@ func TestRegisterWithInvalidEmail(t *testing.T) {
 
 	email := "totally.not.an.email"
 	password := "hackmenow"
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	acr := schedder.AccountCreationRequest{Email: email, Password: password}
+	err := json.NewEncoder(&buffer).Encode(acr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +220,6 @@ func TestRegisterWithInvalidEmail(t *testing.T) {
 }
 
 func FuzzRegister_BadEmails(f *testing.F) {
-
 	corpus := []string{"mail", "mail@", "@gmail.com", "john#doe"}
 	for _, seed := range corpus {
 		f.Add(seed)
@@ -222,7 +233,11 @@ func FuzzRegister_BadEmails(f *testing.F) {
 
 		var buffer bytes.Buffer
 		password := "hackmetoday"
-		err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+		acr := schedder.AccountCreationRequest{
+			Email:    email,
+			Password: password,
+		}
+		err := json.NewEncoder(&buffer).Encode(acr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -254,7 +269,8 @@ func TestRegisterWithDuplicateEmail(t *testing.T) {
 
 	var buffer bytes.Buffer
 
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Email: email, Password: password})
+	acr := schedder.AccountCreationRequest{Email: email, Password: password}
+	err := json.NewEncoder(&buffer).Encode(acr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +301,8 @@ func TestRegisterWithDuplicatePhone(t *testing.T) {
 
 	var buffer bytes.Buffer
 
-	err := json.NewEncoder(&buffer).Encode(schedder.PostAccountRequest{Phone: phone, Password: password})
+	acr := schedder.AccountCreationRequest{Phone: phone, Password: password}
+	err := json.NewEncoder(&buffer).Encode(acr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,12 +333,19 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 	email := "mail@gmail.com"
 	password := "hackmenow"
 	device := "schedder test"
-	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Email: email, Password: password, Device: device})
+	tgr := schedder.TokenGenerationRequest{
+		Email:    email,
+		Password: password,
+		Device:   device,
+	}
+	err := json.NewEncoder(&buffer).Encode(tgr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &buffer)
+	req := httptest.NewRequest(
+		http.MethodPost, "/accounts/self/sessions", &buffer,
+	)
 	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
@@ -331,7 +355,7 @@ func TestGenerateTokenWithEmail(t *testing.T) {
 	api.ServeHTTP(w, req)
 	resp := w.Result()
 
-	var response schedder.GenerateTokenResponse
+	var response schedder.TokenGenerationResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	t.Logf("\t\t\t%#v\n", response)
 	if err != nil {
@@ -356,12 +380,20 @@ func TestGenerateTokenWithShortDeviceName(t *testing.T) {
 	email := "mail@gmail.com"
 	password := "hackmenow"
 	device := "short"
-	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Email: email, Password: password, Device: device})
+
+	tgr := schedder.TokenGenerationRequest{
+		Email:    email,
+		Password: password,
+		Device:   device,
+	}
+	err := json.NewEncoder(&buffer).Encode(tgr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &buffer)
+	req := httptest.NewRequest(
+		http.MethodPost, "/accounts/self/sessions", &buffer,
+	)
 	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
@@ -371,25 +403,25 @@ func TestGenerateTokenWithShortDeviceName(t *testing.T) {
 	api.ServeHTTP(w, req)
 	resp := w.Result()
 
-	var response schedder.GenerateTokenResponse
+	var response schedder.TokenGenerationResponse
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	t.Logf("\t\t\t%#v\n", response)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if resp.StatusCode != http.StatusBadRequest || response.Error != "device name too short" {
+	if resp.StatusCode != http.StatusBadRequest ||
+		response.Error != "device name too short" {
 		t.Logf("expected %d, got %s", http.StatusCreated, resp.Status)
 		t.Logf("got error: %s", response.Error)
 		t.FailNow()
 	}
 }
 
-
 func TestGenerateTokenWithPhone(t *testing.T) {
 	t.Parallel()
 	type Response struct {
-		schedder.GenerateTokenResponse
+		schedder.TokenGenerationResponse
 		Error string `json:"error,omitempty"`
 	}
 
@@ -401,12 +433,19 @@ func TestGenerateTokenWithPhone(t *testing.T) {
 	phone := "+40743123123"
 	password := "hackmenow"
 	device := "schedder test"
-	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: phone, Password: password, Device: device})
+	tgr := schedder.TokenGenerationRequest{
+		Phone:    phone,
+		Password: password,
+		Device:   device,
+	}
+	err := json.NewEncoder(&buffer).Encode(tgr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &buffer)
+	req := httptest.NewRequest(
+		http.MethodPost, "/accounts/self/sessions", &buffer,
+	)
 	req.RemoteAddr = "127.0.0.1:1234"
 	w := httptest.NewRecorder()
 
@@ -437,12 +476,19 @@ func TestGenerateTokenWithBadPassword(t *testing.T) {
 	phone := "+40743123123"
 	password := "hackmenow"
 	device := "schedder test"
-	err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: phone, Password: password, Device: device})
+	tgr := schedder.TokenGenerationRequest{
+		Phone:    phone,
+		Password: password,
+		Device:   device,
+	}
+	err := json.NewEncoder(&buffer).Encode(tgr)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &buffer)
+	req := httptest.NewRequest(
+		http.MethodPost, "/accounts/self/sessions", &buffer,
+	)
 	req.RemoteAddr = "127.0.0.1"
 	w := httptest.NewRecorder()
 
@@ -470,7 +516,7 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 	}
 
 	type Response struct {
-		schedder.PostAccountResponse
+		schedder.AccountCreationResponse
 		Error string `json:"error,omitempty"`
 	}
 
@@ -481,20 +527,30 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 	}
 
 	for _, td := range testdata {
-		test_name := fmt.Sprintf("TestGenerateTokenWith: email=%s phone=%s err=%s", td.email, td.phone, td.err)
-		t.Run(test_name, func(t *testing.T) {
-
+		testName := fmt.Sprintf(
+			"TestGenerateTokenWith: email=%s phone=%s err=%s",
+			td.email, td.phone, td.err,
+		)
+		t.Run(testName, func(t *testing.T) {
 			api := BeginTx(t)
 			defer api.Rollback()
 
 			var buffer bytes.Buffer
+			tgr := schedder.TokenGenerationRequest{
+				Phone:    td.phone,
+				Email:    td.email,
+				Password: "hackme",
+				Device:   "schedder test",
+			}
 
-			err := json.NewEncoder(&buffer).Encode(schedder.GenerateTokenRequest{Phone: td.phone, Email: td.email, Password: "hackme", Device: "schedder test"})
+			err := json.NewEncoder(&buffer).Encode(tgr)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			req := httptest.NewRequest(http.MethodPost, "/accounts/self/sessions", &buffer)
+			req := httptest.NewRequest(
+				http.MethodPost, "/accounts/self/sessions", &buffer,
+			)
 			req.RemoteAddr = "127.0.0.1"
 			w := httptest.NewRecorder()
 
@@ -508,9 +564,7 @@ func TestGenerateTokenWithoutEmailOrPhone(t *testing.T) {
 			}
 			expect(t, response.Error, td.err)
 			expect(t, http.StatusBadRequest, resp.StatusCode)
-
 		})
-
 	}
 }
 
@@ -524,8 +578,11 @@ func TestAuthMiddleware(t *testing.T) {
 	api.registerUserByEmail(email, password)
 	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
+	handler := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
 
-	endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(handler))
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -544,8 +601,13 @@ func TestAuthMiddleware(t *testing.T) {
 }
 
 func TestAuthMiddlewareWithBadToken(t *testing.T) {
+	const invalidToken = `k6CVEMpWIHDkaZ+fmmZl4ApE+KfpO3DDGHdR7B3Ql6Uwt4zJpnUnlmNHPPVlDoHYTTWnWoEQcC1tyYjKD89mmw`
 	t.Parallel()
-	testdata := []string{"bad_token", "k6CVEMpWIHDkaZ+fmmZl4ApE+KfpO3DDGHdR7B3Ql6Uwt4zJpnUnlmNHPPVlDoHYTTWnWoEQcC1tyYjKD89mmw", "not-bearer"}
+	testdata := []string{
+		"bad_token",
+		invalidToken,
+		"not-bearer",
+	}
 
 	for _, v := range testdata {
 		t.Run("TestAuthMiddlewareWithBadToken: "+v, func(t *testing.T) {
@@ -553,8 +615,11 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 			defer api.Rollback()
 
 			token := v
+			handler := func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}
 
-			endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+			endpoint := api.AuthenticatedEndpoint(http.HandlerFunc(handler))
 
 			req := httptest.NewRequest(http.MethodPost, "/test", nil)
 			scheme := "Bearer"
@@ -569,12 +634,11 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 
 			data := make(map[string]string)
 			err := json.NewDecoder(resp.Body).Decode(&data)
-			if err != nil && err.Error() != "EOF" {
+			if err != nil {
 				t.Fatal(err)
 			}
 			expect(t, "invalid token", data["error"])
 			expect(t, http.StatusUnauthorized, resp.StatusCode)
-
 		})
 	}
 }
@@ -582,7 +646,7 @@ func TestAuthMiddlewareWithBadToken(t *testing.T) {
 func TestGetSessionsForAccount(t *testing.T) {
 	t.Parallel()
 	type GetSessionResponse struct {
-		schedder.GetSessionsForAccountResponse
+		schedder.SessionsForAccountResponse
 		Error string
 	}
 	api := BeginTx(t)
@@ -630,7 +694,11 @@ func TestRevokeSession(t *testing.T) {
 	token := api.generateToken(email, password)
 	sessions := api.getSessions(token)
 
-	req := httptest.NewRequest("DELETE", "/accounts/self/sessions/"+sessions[0].String(), nil)
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/accounts/self/sessions/"+sessions[0].String(),
+		nil,
+	)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -640,13 +708,17 @@ func TestRevokeSession(t *testing.T) {
 
 	var data schedder.Response
 	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 	expect(t, "", data.Error)
 	expect(t, http.StatusOK, resp.StatusCode)
 
-	req = httptest.NewRequest("DELETE", "/accounts/self/sessions/"+sessions[0].String(), nil)
+	req = httptest.NewRequest(
+		http.MethodDelete,
+		"/accounts/self/sessions/"+sessions[0].String(),
+		nil,
+	)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w = httptest.NewRecorder()
 
@@ -655,7 +727,7 @@ func TestRevokeSession(t *testing.T) {
 	resp = w.Result()
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -680,9 +752,11 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 	api.activateUserByEmail(otherEmail)
 	otherToken := api.generateToken(otherEmail, otherPassword)
 
-	session_id := "361e5d4f-4092-4d0b-8155-837b113c25ab"
+	sessionID := "361e5d4f-4092-4d0b-8155-837b113c25ab"
 
-	req := httptest.NewRequest("DELETE", "/accounts/self/sessions/"+session_id, nil)
+	req := httptest.NewRequest(
+		http.MethodDelete, "/accounts/self/sessions/"+sessionID, nil,
+	)
 	req.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -692,7 +766,7 @@ func TestRevokeSessionWithBadSessionId(t *testing.T) {
 
 	var data schedder.Response
 	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -711,18 +785,20 @@ func TestGetAccountByEmailAsAdmin(t *testing.T) {
 	email := "user@gmail.com"
 	password := "hackmenow"
 
-	other_email := "other@example.com"
-	other_password := "hackmenow_other"
+	otherEmail := "other@example.com"
+	otherPassword := "hackmenow_other"
 
 	api.registerUserByEmail(email, password)
-	api.registerUserByEmail(other_email, other_password)
+	api.registerUserByEmail(otherEmail, otherPassword)
 	api.activateUserByEmail(email)
-	api.activateUserByEmail(other_email)
+	api.activateUserByEmail(otherEmail)
 	token := api.generateToken(email, password)
 
 	api.forceAdmin(email, true)
 
-	r := httptest.NewRequest(http.MethodGet, "/accounts/by-email/"+other_email, nil)
+	r := httptest.NewRequest(
+		http.MethodGet, "/accounts/by-email/"+otherEmail, nil,
+	)
 	r.Header.Add("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 
@@ -731,7 +807,7 @@ func TestGetAccountByEmailAsAdmin(t *testing.T) {
 	resp := w.Result()
 	var data schedder.Response
 	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -747,15 +823,15 @@ func TestGetAccountByEmailAsAdminWithoutBeingAdmin(t *testing.T) {
 	email := "user@example.com"
 	password := "hackmenow"
 
-	other_email := "other@example.com"
-	other_password := "hackmenow_other"
+	otherEmail := "other@example.com"
+	otherPassword := "hackmenow_other"
 
 	api.registerUserByEmail(email, password)
-	api.registerUserByEmail(other_email, other_password)
+	api.registerUserByEmail(otherEmail, otherPassword)
 	api.activateUserByEmail(email)
-	api.activateUserByEmail(other_email)
+	api.activateUserByEmail(otherEmail)
 
-	r := httptest.NewRequest(http.MethodGet, "/accounts/by-email/"+other_email, nil)
+	r := httptest.NewRequest(http.MethodGet, "/accounts/by-email/"+otherEmail, nil)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -764,7 +840,7 @@ func TestGetAccountByEmailAsAdminWithoutBeingAdmin(t *testing.T) {
 	resp := w.Result()
 	var data schedder.Response
 	err := json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -780,13 +856,13 @@ func TestGetAccountByEmailAsAdminWithInvalidEmail(t *testing.T) {
 	email := "user@example.com"
 	password := "hackmenow"
 
-	other_email := "other@example.com"
+	otherEmail := "other@example.com"
 
 	api.registerUserByEmail(email, password)
 	api.activateUserByEmail(email)
 	api.forceAdmin(email, true)
 
-	r := httptest.NewRequest(http.MethodGet, "/accounts/by-email/"+other_email, nil)
+	r := httptest.NewRequest(http.MethodGet, "/accounts/by-email/"+otherEmail, nil)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -814,25 +890,29 @@ func TestSetAdmin(t *testing.T) {
 	api.registerUserByEmail(email, password)
 	api.activateUserByEmail(email)
 
-	other_email := "other@example.com"
-	other_password := "hackmenow_other"
+	otherEmail := "other@example.com"
+	otherPassword := "hackmenow_other"
 
-	api.registerUserByEmail(other_email, other_password)
-	api.activateUserByEmail(other_email)
+	api.registerUserByEmail(otherEmail, otherPassword)
+	api.activateUserByEmail(otherEmail)
 
 	token := api.generateToken(email, password)
 
 	api.forceAdmin(email, true)
 
-	accountID := api.findAccountByEmail(other_email)
-	r := httptest.NewRequest(http.MethodPost, "/accounts/"+accountID.String()+"/admin", strings.NewReader("{\"admin\": true}"))
+	accountID := api.findAccountByEmail(otherEmail)
+	r := httptest.NewRequest(
+		http.MethodPost,
+		"/accounts/"+accountID.String()+"/admin",
+		strings.NewReader("{\"admin\": true}"),
+	)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+token)
 
 	api.ServeHTTP(w, r)
 
 	resp := w.Result()
-	expect(t, http.StatusOK ,resp.StatusCode)
+	expect(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestSetBusiness(t *testing.T) {
@@ -846,23 +926,27 @@ func TestSetBusiness(t *testing.T) {
 	api.registerUserByEmail(email, password)
 	api.activateUserByEmail(email)
 
-	other_email := "other@example.com"
-	other_password := "hackmenow_other"
+	otherEmail := "other@example.com"
+	otherPassword := "hackmenow_other"
 
-	api.registerUserByEmail(other_email, other_password)
-	api.activateUserByEmail(other_email)
+	api.registerUserByEmail(otherEmail, otherPassword)
+	api.activateUserByEmail(otherEmail)
 
 	token := api.generateToken(email, password)
 
 	api.forceAdmin(email, true)
 
-	accountID := api.findAccountByEmail(other_email)
-	r := httptest.NewRequest(http.MethodPost, "/accounts/"+accountID.String()+"/business", strings.NewReader("{\"business\": true}"))
+	accountID := api.findAccountByEmail(otherEmail)
+	r := httptest.NewRequest(
+		http.MethodPost,
+		"/accounts/"+accountID.String()+"/business",
+		strings.NewReader("{\"business\": true}"),
+	)
 	w := httptest.NewRecorder()
 	r.Header.Add("Authorization", "Bearer "+token)
 
 	api.ServeHTTP(w, r)
 
 	resp := w.Result()
-	expect(t, http.StatusOK ,resp.StatusCode)
+	expect(t, http.StatusOK, resp.StatusCode)
 }

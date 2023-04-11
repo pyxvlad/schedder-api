@@ -27,7 +27,10 @@ func TestCreateTenant(t *testing.T) {
 	request.Name = "Zâna Măseluță"
 
 	buff := bytes.Buffer{}
-	json.NewEncoder(&buff).Encode(request)
+	err := json.NewEncoder(&buff).Encode(request)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
@@ -38,7 +41,6 @@ func TestCreateTenant(t *testing.T) {
 	resp := w.Result()
 	expect(t, http.StatusCreated, resp.StatusCode)
 }
-
 
 func TestCreateTenantWithShortName(t *testing.T) {
 	t.Parallel()
@@ -56,7 +58,10 @@ func TestCreateTenantWithShortName(t *testing.T) {
 	request.Name = "Măseluț"
 
 	buff := bytes.Buffer{}
-	json.NewEncoder(&buff).Encode(request)
+	err := json.NewEncoder(&buff).Encode(request)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	r := httptest.NewRequest(http.MethodPost, "/tenants", &buff)
 	w := httptest.NewRecorder()
@@ -66,7 +71,7 @@ func TestCreateTenantWithShortName(t *testing.T) {
 
 	resp := w.Result()
 	var response schedder.Response
-	err := json.NewDecoder(resp.Body).Decode(&response)
+	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,9 +86,9 @@ func TestGetTenants(t *testing.T) {
 
 	email := "tester@example.com"
 	password := "hackmenow"
-	tenant_name := "Zâna Măseluță"
+	tenantName := "Zâna Măseluță"
 
-	api.createTenantAndAccount(email, password, tenant_name)
+	api.createTenantAndAccount(email, password, tenantName)
 
 	r := httptest.NewRequest(http.MethodGet, "/tenants", nil)
 	w := httptest.NewRecorder()
@@ -93,7 +98,7 @@ func TestGetTenants(t *testing.T) {
 	resp := w.Result()
 	expect(t, http.StatusOK, resp.StatusCode)
 
-	var data schedder.GetTenantsResponse
+	var data schedder.TenantsResponse
 
 	err := json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
@@ -105,7 +110,7 @@ func TestGetTenants(t *testing.T) {
 	found := false
 
 	for _, tenant := range data.Tenants {
-		if tenant.Name == tenant_name {
+		if tenant.Name == tenantName {
 			found = true
 		}
 	}
@@ -119,14 +124,14 @@ func TestAddTenantMember(t *testing.T) {
 
 	email := "tester@example.com"
 	password := "hackmenow"
-	tenant_name := "Zâna Măseluță"
+	tenantName := "Zâna Măseluță"
 
-	tenantID := api.createTenantAndAccount(email, password, tenant_name)
+	tenantID := api.createTenantAndAccount(email, password, tenantName)
 
-	other_email := "other@example.com"
-	other_password := "some_password"
-	otherAccountID := api.registerUserByEmail(other_email, other_password)
-	api.activateUserByEmail(other_email)
+	otherEmail := "other@example.com"
+	otherPassword := "some_password"
+	otherAccountID := api.registerUserByEmail(otherEmail, otherPassword)
+	api.activateUserByEmail(otherEmail)
 
 	var request schedder.AddTenantMemberRequest
 	request.AccountID = otherAccountID
@@ -136,7 +141,9 @@ func TestAddTenantMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(
+		http.MethodPost, "/tenants/"+tenantID.String()+"/members", &b,
+	)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -162,14 +169,14 @@ func TestAddTenantMemberWhenAlreadyAMember(t *testing.T) {
 
 	email := "tester@example.com"
 	password := "hackmenow"
-	tenant_name := "Zâna Măseluță"
-	tenantID := api.createTenantAndAccount(email, password, tenant_name)
+	tenantName := "Zâna Măseluță"
+	tenantID := api.createTenantAndAccount(email, password, tenantName)
 	token := api.generateToken(email, password)
 
-	other_email := "other@example.com"
-	other_password := "some_password"
-	otherAccountID := api.registerUserByEmail(other_email, other_password)
-	api.activateUserByEmail(other_email)
+	otherEmail := "other@example.com"
+	otherPassword := "some_password"
+	otherAccountID := api.registerUserByEmail(otherEmail, otherPassword)
+	api.activateUserByEmail(otherEmail)
 
 	api.addTenantMember(token, tenantID, otherAccountID)
 
@@ -181,7 +188,9 @@ func TestAddTenantMemberWhenAlreadyAMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := httptest.NewRequest(http.MethodPost, "/tenants/" + tenantID.String() + "/members", &b)
+	r := httptest.NewRequest(
+		http.MethodPost, "/tenants/"+tenantID.String()+"/members", &b,
+	)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -195,42 +204,46 @@ func TestAddTenantMemberWhenAlreadyAMember(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if response.Error != "already member" || resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("Wanted 'already member' and 400 Bad Request, got %s and %s", response.Error, resp.Status)
+	if response.Error != "already member" ||
+		resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf(
+			"Wanted 'already member' and 400 Bad Request, got %s and %s",
+			response.Error, resp.Status,
+		)
 	}
 }
-
 
 func TestGetTenantMembers(t *testing.T) {
 	api := BeginTx(t)
 	defer api.Rollback()
 	email := "tester@example.com"
 	password := "hackmenow"
-	tenant_name := "Zâna Măseluță"
+	tenantName := "Zâna Măseluță"
 
 	// this account represents the manager of the tenant
 	accountID := api.registerUserByEmail(email, password)
 	api.activateUserByEmail(email)
 	token := api.generateToken(email, password)
 	api.forceBusiness(email, true)
-	tenantID := api.createTenant(token, tenant_name)
+	tenantID := api.createTenant(token, tenantName)
 
 	// this account represents an added member
-	other_phone := "+40743123123"
-	other_password := "some_password"
-	otherAccountID := api.registerUserByPhone(other_phone, other_password)
-	api.activateUserByPhone(other_phone)
+	otherPhone := "+40743123123"
+	otherPassword := "some_password"
+	otherAccountID := api.registerUserByPhone(otherPhone, otherPassword)
+	api.activateUserByPhone(otherPhone)
 
 	api.addTenantMember(token, tenantID, otherAccountID)
 
 	// this account is supposed to NOT be part of the member list
-	another_email := "another@example.com"
-	another_password := "some_password"
-	_ = api.registerUserByEmail(another_email, another_password)
-	api.activateUserByEmail(another_email)
+	anotherEmail := "another@example.com"
+	anotherPassword := "some_password"
+	_ = api.registerUserByEmail(anotherEmail, anotherPassword)
+	api.activateUserByEmail(anotherEmail)
 
-
-	r := httptest.NewRequest(http.MethodGet, "/tenants/" + tenantID.String() + "/members", nil)
+	r := httptest.NewRequest(
+		http.MethodGet, "/tenants/"+tenantID.String()+"/members", nil,
+	)
 	r.Header.Add("Authorization", "Bearer "+api.generateToken(email, password))
 	w := httptest.NewRecorder()
 
@@ -238,7 +251,7 @@ func TestGetTenantMembers(t *testing.T) {
 
 	resp := w.Result()
 
-	var response schedder.GetTenantMembersResponse
+	var response schedder.TenantMembersResponse
 
 	t.Log(resp.Status)
 	err := json.NewDecoder(resp.Body).Decode(&response)
@@ -253,12 +266,15 @@ func TestGetTenantMembers(t *testing.T) {
 	members := 0
 
 	for _, mr := range response.Members {
-		if mr.AccountID == accountID  || mr.AccountID == otherAccountID {
-			members++
-		} else {
-			t.Fatalf("unexpected tenant member email:%s uuid:%s", mr.Email, mr.AccountID)
-		}
 		t.Logf("member email:%s uuid:%s", mr.Email, mr.AccountID)
+		if mr.AccountID == accountID || mr.AccountID == otherAccountID {
+			members++
+			continue
+		}
+		t.Fatalf(
+			"unexpected tenant member email:%s uuid:%s",
+			mr.Email, mr.AccountID,
+		)
 	}
 
 	expect(t, 2, len(response.Members))
