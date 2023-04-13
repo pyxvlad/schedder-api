@@ -2,6 +2,14 @@
 -- +goose StatementBegin
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+CREATE TABLE photos (
+	photo_id uuid DEFAULT gen_random_uuid(),
+	sha256sum bytea NOT NULL,
+
+	PRIMARY KEY(photo_id)
+);
 
 CREATE TABLE accounts (
 	account_id uuid DEFAULT gen_random_uuid(),
@@ -13,6 +21,8 @@ CREATE TABLE accounts (
 	is_business boolean DEFAULT FALSE NOT NULL,
 	is_admin boolean DEFAULT FALSE NOT NULL,
 	activated boolean DEFAULT FALSE NOT NULL,
+
+	photo_id UUID REFERENCES photos(photo_id) DEFAULT NULL,
 
 	PRIMARY KEY(account_id),
 	-- check that at least one of exists: email, phone
@@ -62,6 +72,15 @@ CREATE TABLE tenant_accounts (
 	PRIMARY KEY(tenant_id, account_id)
 );
 
+
+
+CREATE TABLE tenant_photos (
+	tenant_id uuid REFERENCES tenants(tenant_id) NOT NULL,
+	photo_id uuid REFERENCES photos(photo_id) NOT NULL,
+
+	PRIMARY KEY(tenant_id, photo_id)
+);
+
 CREATE TABLE services (
 	service_id uuid DEFAULT gen_random_uuid(),
 
@@ -90,10 +109,12 @@ CREATE TABLE services (
 -- +goose Down
 -- +goose StatementBegin
 DROP TABLE services;
+DROP TABLE tenant_photos;
 DROP TABLE tenant_accounts;
 DROP TABLE tenants;
 DROP TABLE sessions;
 DROP TABLE verification_codes;
 DROP TYPE verification_scope;
 DROP TABLE accounts;
+DROP TABLE photos;
 -- +goose StatementEnd

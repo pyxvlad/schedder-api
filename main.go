@@ -28,6 +28,11 @@ type API struct {
 	mux           *chi.Mux
 	emailVerifier Verifier
 	phoneVerifier Verifier
+	photosPath    string
+}
+
+func (a *API) PhotosPath() string {
+	return a.photosPath
 }
 
 // Response represents the base response. All other *Response types embed this
@@ -40,7 +45,9 @@ type Response struct {
 
 // New creates a new API object.
 func New(
-	txlike database.TxLike, emailVerifier, phoneVerifier Verifier,
+	txlike database.TxLike,
+	emailVerifier, phoneVerifier Verifier,
+	photosPath string,
 ) *API {
 	api := new(API)
 	api.txlike = txlike
@@ -63,6 +70,12 @@ func New(
 		r.With(WithJSON[AccountCreationRequest]).Post("/", api.CreateAccount)
 		r.Route("/self", func(r chi.Router) {
 			r.With(WithJSON[VerifyCodeRequest]).Post("/verify", api.VerifyCode)
+			r.Group(func(r chi.Router) {
+				r.Use(api.AuthenticatedEndpoint)
+				r.Post("/photo", api.SetProfilePhoto)
+				r.Get("/photo", api.DownloadProfilePhoto)
+			})
+
 			r.Route("/sessions", func(r chi.Router) {
 				r.With(WithJSON[TokenGenerationRequest]).Post(
 					"/", api.GenerateToken,
@@ -77,7 +90,7 @@ func New(
 				})
 			})
 		})
-		r.With(api.AuthenticatedEndpoint).With(api.AdminEndpoint).Get(
+		r.With(api.AuthenticatedEndpoint, api.AdminEndpoint).Get(
 			"/by-email/{email}", api.AccountByEmailAsAdmin,
 		)
 		r.Route("/{accountID}", func(r chi.Router) {
@@ -99,19 +112,27 @@ func New(
 		)
 		r.Get("/", api.Tenants)
 		r.Route("/{tenantID}", func(r chi.Router) {
-			r.Use(
-				api.WithTenantID,
-				api.AuthenticatedEndpoint,
-				api.TenantManagerEndpoint,
-			)
-			r.With(WithJSON[AddTenantMemberRequest]).Post(
-				"/members", api.AddTenantMember,
-			)
-			r.Get("/members", api.TenantMembers)
+			r.Use(api.WithTenantID)
+			r.Group(func(r chi.Router) {
+				r.Use(
+					api.AuthenticatedEndpoint,
+					api.TenantManagerEndpoint,
+				)
+				r.With(WithJSON[AddTenantMemberRequest]).Post(
+					"/members", api.AddTenantMember,
+				)
+				r.Get("/members", api.TenantMembers)
+				r.Post("/photos", api.AddTenantPhoto)
+			})
+			r.Get("/photos", api.ListTenantPhotos)
+			r.Get("/photos/by-id/{photoID}", api.DownloadTenantPhoto)
 		})
 	})
 	api.emailVerifier = emailVerifier
 	api.phoneVerifier = phoneVerifier
+
+	api.photosPath = photosPath
+	os.MkdirAll(api.photosPath, 0777)
 
 	return api
 }
@@ -150,6 +171,8 @@ func Run() {
 	postgresURI := RequiredEnv(
 		"SCHEDDER_POSTGRES", "postgres://user@localhost/schedder_db",
 	)
+
+	photosPath := RequiredEnv("SCHEDDER_PHOTOS", "./data/photos")
 	log.Printf("INFO: connecting to Postgres using: %#v", postgresURI)
 	stdDB, err := sql.Open("pgx", postgresURI)
 	if err != nil {
@@ -168,7 +191,7 @@ func Run() {
 	emailVerifier := WriterVerifier{os.Stdout, "email"}
 	phoneVerifier := WriterVerifier{os.Stdout, "phone"}
 
-	api := New(conn, &emailVerifier, &phoneVerifier)
+	api := New(conn, &emailVerifier, &phoneVerifier, photosPath)
 
 	server := &http.Server{
 		Addr:              ":2023",
@@ -189,6 +212,7 @@ func jsonError(w http.ResponseWriter, statusCode int, message string) {
 }
 
 func jsonResp[T any](w http.ResponseWriter, statusCode int, response T) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	err := json.NewEncoder(w).Encode(response)
 	if err != nil {

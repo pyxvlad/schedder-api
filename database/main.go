@@ -14,26 +14,29 @@ import (
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-func MigrateDB(db *sql.DB) {
+func MigrateDB(db *sql.DB) error {
 	goose.SetBaseFS(embedMigrations)
 	if err := goose.SetDialect("postgres"); err != nil {
-		panic(err)
+		return err;
 	}
 
 	if err := goose.Up(db, "migrations"); err != nil {
-		panic(err)
+		return err;
 	}
+
+	return nil
 }
 
-func ResetDB(db *sql.DB) {
+func ResetDB(db *sql.DB) error {
 	goose.SetBaseFS(embedMigrations)
 	if err := goose.SetDialect("postgres"); err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := goose.Reset(db, "migrations"); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 

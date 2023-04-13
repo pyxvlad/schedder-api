@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,8 +34,14 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	database.ResetDB(stdDB)
+	err = database.ResetDB(stdDB)
+	if err != nil {
+		panic(err)
+	}
 	database.MigrateDB(stdDB)
+	if err != nil {
+		panic(err)
+	}
 	if err = stdDB.Close(); err != nil {
 		panic(err)
 	}
@@ -106,9 +113,11 @@ func BeginTx(t *testing.T) APITX {
 		t.Fatalf("testing: BeginTx: %e", err)
 	}
 
+	photosPath := t.TempDir() + "/photos"
+
 	var api APITX
 	api.codes = make(map[string]string)
-	api.API = schedder.New(tx, api.codes, api.codes)
+	api.API = schedder.New(tx, api.codes, api.codes, photosPath)
 	api.tx = tx
 	api.t = t
 	return api
@@ -391,6 +400,49 @@ func (a *APITX) addTenantMember(
 	a.t.Log(response.Error)
 
 	expect(a.t, http.StatusOK, resp.StatusCode)
+}
+
+func (a *APITX) addTenantPhoto(managerToken string, tenantID uuid.UUID, photo io.Reader) uuid.UUID {
+	endpoint := fmt.Sprintf("/tenants/%s/photos", tenantID)
+	r := httptest.NewRequest(http.MethodPost, endpoint, photo)
+	r.Header.Set("Authorization", "Bearer "+managerToken)
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+
+	a.t.Log(resp.Status)
+
+	var response schedder.AddTenantPhotoResponse
+	err := json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	expect(a.t, http.StatusCreated, resp.StatusCode)
+	return response.PhotoID
+}
+
+func (a *APITX) addProfilePhoto(token string, photo io.Reader) {
+	r := httptest.NewRequest(http.MethodPost, "/accounts/self/photo", photo)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+
+	var response schedder.Response
+	err := json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil && err != io.EOF {
+		a.t.Fatal(err)
+	}
+
+	a.t.Logf("Error: %s", response.Error)
+
+	expect(a.t, "", response.Error)
+	expect(a.t, http.StatusOK, resp.StatusCode)
+
 }
 
 func TestWithInvalidJson(t *testing.T) {
