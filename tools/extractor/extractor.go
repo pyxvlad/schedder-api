@@ -94,7 +94,7 @@ func findJSONRequestType(middleware func(http.Handler) http.Handler) string {
 }
 
 func main() {
-	api := schedder.New(nil, nil, nil)
+	api := schedder.New(nil, nil, nil, "")
 
 	b := bytes.Buffer{}
 
@@ -175,9 +175,8 @@ func main() {
 		panic("couldn't find schedder package in workdir")
 	}
 
-	//fmt.Printf("pkg: %#v\n", pkg)
-
 	objects := make(ObjectStore)
+	objects["UUID"] = &Object{Name: "UUID",Fields: nil, Arrays: nil, Objects: nil}
 
 	for _, file := range pkg.Files {
 		for _, declaration := range file.Decls {

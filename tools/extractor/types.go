@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"go/ast"
 	mrand "math/rand"
 	"net/http"
@@ -36,6 +37,8 @@ func (m *Middleware) HTMLRequirement() string {
 		return "Required URL parameter: <code>accountID</code>"
 	case "WithTenantID":
 		return "Required URL parameter: <code>tenantID</code>"
+	case "WithPhotoID":
+		return "Required URL parameter: <code>photoID</code>"
 	case "AdminEndpoint":
 		return "Requires the authenticated user to be an <strong>Admin</strong>"
 	case "TenantManagerEndpoint":
@@ -342,13 +345,18 @@ func (o *Object) Sample(level int, showOmitEmpty bool) string {
 		sb.WriteRune('\n')
 	}
 	for k, a := range o.Arrays {
+
 		sb.WriteString(Indent(level + 1))
 		sb.WriteString(Quote(k))
 		sb.WriteString(": ")
 		sb.WriteString("[\n")
-
-		s := a.Sample(level+2, showOmitEmpty)
-		sb.WriteString(s)
+		if a.Name == "UUID" {
+			sb.WriteString(Indent(level + 2))
+			sb.WriteString(Quote(uuid.NewString()))
+		} else {
+			s := a.Sample(level+2, showOmitEmpty)
+			sb.WriteString(s)
+		}
 		sb.WriteString("\n")
 
 		sb.WriteString(Indent(level + 1))
@@ -376,8 +384,8 @@ func (o *Object) AsTypeScriptFunctionArgs() string {
 type ObjectStore map[string]*Object
 
 func (os ObjectStore) extractStruct(name string, st *ast.StructType) {
-	arrays := make(map[string]*Object)
 	fields := make([]Field, 0)
+	arrays := make(map[string]*Object)
 	for _, field := range st.Fields.List {
 		if field.Names != nil && field.Tag != nil {
 			tag, omitempty := fieldFromTag(field.Tag.Value)
@@ -388,23 +396,35 @@ func (os ObjectStore) extractStruct(name string, st *ast.StructType) {
 			case *ast.SelectorExpr:
 				fields = append(fields, Field{Name: tag, TypeName: t.Sel.Name, OmitEmpty: omitempty})
 			case *ast.ArrayType:
-				elt := t.Elt.(*ast.Ident)
-				arrays[tag] = os[elt.Name]
+				switch elt := t.Elt.(type) {
+				case *ast.Ident:
+					arrays[tag] = os[elt.Name]
+				case *ast.SelectorExpr:
+					arrays[tag] = os[elt.Sel.Name]
+				default:
+					msg := fmt.Sprintf("don't know %#v", elt)
+					panic(msg)
+				}
 			default:
 				panic("unhandled type")
 			}
 		} else if field.Names == nil {
-			if embedded, ok := field.Type.(*ast.Ident); ok {
-				if embedded.Name == "Response" {
+			switch t := field.Type.(type) {
+			case *ast.Ident:
+				if t.Name == "Response" {
 					fields = append(fields, Field{Name: "error", TypeName: "string", OmitEmpty: true})
 				}
+			default:
+				panic("don't know")
 			}
 		}
 	}
 
-	os[name].Fields = fields
-	os[name].Arrays = arrays
+	fmt.Printf("LOOK: %#v\n", fields)
 	os[name].Name = name
+	os[name].Arrays = arrays
+	os[name].Fields = fields
+
 }
 
 // NewMiddleware processes the middleware into a Middleware struct
