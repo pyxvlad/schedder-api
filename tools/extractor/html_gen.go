@@ -62,19 +62,19 @@ const htmlTemplate = `
 	<p class="p_json">{{.HTMLRequirement}}</p> {{end}}
 	{{if .InputString}}
 	<p class="p_json"> Example input for {{.Name}}:</p>
-	<pre>
-		<code>
+<pre>
+<code>
 {{.Input.Sample 0 true}}
-		</code>
-	</pre>
+</code>
+</pre>
 	{{end}}
 	{{if .OutputString}}
 	<p class="p_json"> Example output for {{.Name}}:</p>
-	<pre>
-		<code>
+<pre>
+<code>
 {{.Output.Sample 0 true}}
-		</code>
-	</pre>
+</code>
+</pre>
 	{{end}}
 	<p class="p_json"> Example with CURL: <code id="curl-{{.Name}}">{{.CurlExample}}</code>
 	<button onclick="CopyCurlExample('{{.Name}}')" class="copy_curl">Copy Example</button>

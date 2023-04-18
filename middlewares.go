@@ -48,7 +48,10 @@ func (a *API) AdminEndpoint(next http.Handler) http.Handler {
 		authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 		admin, err := a.db.GetAdminForAccount(r.Context(), authenticatedID)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "how?")
+			jsonError(
+				w, http.StatusInternalServerError,
+				"invalid state: invalid user is authenticated",
+			)
 			return
 		}
 		if !admin {
@@ -64,10 +67,6 @@ func (a *API) AdminEndpoint(next http.Handler) http.Handler {
 func (a *API) WithSessionID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sessionString := chi.URLParam(r, "sessionID")
-		if sessionString == "" {
-			jsonError(w, http.StatusNotFound, "invalid session")
-			return
-		}
 
 		sessionID, err := uuid.Parse(sessionString)
 		if err != nil {
@@ -86,10 +85,6 @@ func (a *API) WithSessionID(next http.Handler) http.Handler {
 func (a *API) WithAccountID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accountString := chi.URLParam(r, "accountID")
-		if accountString == "" {
-			jsonError(w, http.StatusNotFound, "invalid account")
-			return
-		}
 
 		accountID, err := uuid.Parse(accountString)
 		if err != nil {
@@ -108,10 +103,6 @@ func (a *API) WithAccountID(next http.Handler) http.Handler {
 func (a *API) WithTenantID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenantString := chi.URLParam(r, "tenantID")
-		if tenantString == "" {
-			jsonError(w, http.StatusNotFound, "invalid tenant")
-			return
-		}
 
 		tenantID, err := uuid.Parse(tenantString)
 		if err != nil {
@@ -164,3 +155,23 @@ func WithJSON[T any](next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// WithPhotoID is a middleware that ensures the photoID URL parameter is
+// present and makes it available as an UUID in the context using CtxPhotoID.
+func (a *API) WithPhotoID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		photoString := chi.URLParam(r, "photoID")
+
+		photoID, err := uuid.Parse(photoString)
+		if err != nil {
+			jsonError(w, http.StatusNotFound, "invalid photo")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), CtxPhotoID, photoID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+

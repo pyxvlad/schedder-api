@@ -74,6 +74,7 @@ func New(
 				r.Use(api.AuthenticatedEndpoint)
 				r.Post("/photo", api.SetProfilePhoto)
 				r.Get("/photo", api.DownloadProfilePhoto)
+				r.Delete("/photo", api.DeleteProfilePhoto)
 			})
 
 			r.Route("/sessions", func(r chi.Router) {
@@ -123,9 +124,14 @@ func New(
 				)
 				r.Get("/members", api.TenantMembers)
 				r.Post("/photos", api.AddTenantPhoto)
+				r.With(api.WithPhotoID).Delete(
+					"/photos/by-id/{photoID}", api.DeleteTenantPhoto,
+				)
 			})
 			r.Get("/photos", api.ListTenantPhotos)
-			r.Get("/photos/by-id/{photoID}", api.DownloadTenantPhoto)
+			r.With(api.WithPhotoID).Get(
+				"/photos/by-id/{photoID}", api.DownloadTenantPhoto,
+			)
 		})
 	})
 	api.emailVerifier = emailVerifier

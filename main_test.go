@@ -442,7 +442,6 @@ func (a *APITX) addProfilePhoto(token string, photo io.Reader) {
 
 	expect(a.t, "", response.Error)
 	expect(a.t, http.StatusOK, resp.StatusCode)
-
 }
 
 func TestWithInvalidJson(t *testing.T) {

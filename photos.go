@@ -57,9 +57,6 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 
 	checksum := sha256.Sum256(data)
 
-	encoded := hex.EncodeToString(checksum[:])
-	os.WriteFile(a.photosPath+encoded, data, 0777)
-
 	atpp := database.AddTenantPhotoParams{
 		Sha256sum: checksum[:],
 		TenantID:  tenantID,
@@ -69,6 +66,17 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "not implemented")
 		return
+	}
+
+	count, err := a.db.CountPhotosWithHash(ctx, checksum[:])
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "not implemented")
+		return
+	}
+
+	if count == 1 {
+		encoded := hex.EncodeToString(checksum[:])
+		os.WriteFile(a.photosPath+encoded, data, 0777)
 	}
 
 	jsonResp(w, http.StatusCreated, AddTenantPhotoResponse{PhotoID: photoID})
@@ -137,7 +145,37 @@ func (a *API) DownloadTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *API) SetProfilePhoto(w http.ResponseWriter, r * http.Request) {
+func (a *API) DeleteTenantPhoto(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tenantID := ctx.Value(CtxTenantID).(uuid.UUID)
+	photoID := ctx.Value(CtxPhotoID).(uuid.UUID)
+	dtpp := database.DeleteTenantPhotoParams{
+		PhotoID: photoID,
+		TenantID: tenantID,
+	}
+	hash, err := a.db.DeleteTenantPhoto(ctx, dtpp)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, "no photo")
+		return
+	}
+
+	count, err := a.db.CountPhotosWithHash(ctx, hash)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "not implemented")
+		return
+	}
+
+	if count == 0 {
+		encoded := hex.EncodeToString(hash)
+		err = os.Remove(a.photosPath + encoded)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+func (a *API) SetProfilePhoto(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	authenticatedID := ctx.Value(CtxAuthenticatedID).(uuid.UUID)
 	part := make([]byte, 512)
@@ -167,11 +205,7 @@ func (a *API) SetProfilePhoto(w http.ResponseWriter, r * http.Request) {
 	}
 
 	checksum := sha256.Sum256(data)
-
-	encoded := hex.EncodeToString(checksum[:])
-	os.WriteFile(a.photosPath+encoded, data, 0777)
-
-	args := database.SetProfilePhotoParams {
+	args := database.SetProfilePhotoParams{
 		AccountID: authenticatedID,
 		Sha256sum: checksum[:],
 	}
@@ -180,6 +214,16 @@ func (a *API) SetProfilePhoto(w http.ResponseWriter, r * http.Request) {
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "not implemented")
 		return
+	}
+
+	count, err := a.db.CountPhotosWithHash(ctx, checksum[:])
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "not implemented")
+		return
+	}
+	if count == 1 {
+		encoded := hex.EncodeToString(checksum[:])
+		os.WriteFile(a.photosPath+encoded, data, 0777)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -218,4 +262,30 @@ func (a *API) DownloadProfilePhoto(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
+}
+
+func (a *API) DeleteProfilePhoto(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	authenticatedID := ctx.Value(CtxAuthenticatedID).(uuid.UUID)
+	hash, err := a.db.DeleteProfilePhoto(ctx, authenticatedID)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "no photo")
+		return
+	}
+
+	count, err := a.db.CountPhotosWithHash(ctx, hash)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "not implemented")
+		return
+	}
+
+	if count == 0 {
+		encoded := hex.EncodeToString(hash)
+		err = os.Remove(a.photosPath + encoded)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
 }

@@ -14,6 +14,8 @@ const (
 	CtxAccountID = CtxKey(4)
 	// CtxTenantID is used when an endpoint needs a tenantID URL parameter.
 	CtxTenantID = CtxKey(5)
+	// CtxPhotoID is used when an endpoint needs a photoID URL parameter.
+	CtxPhotoID = CtxKey(6)
 
 	// BcryptRounds represents the number of rounds to be used in bcrypt.
 	BcryptRounds = 10
