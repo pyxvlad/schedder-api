@@ -15,13 +15,16 @@ services:
           # POSTGRES_PASSWORD: '⚠️ password for dev'
           # SCHEDDER_POSTGRES: 'postgres://${POSTGRES_USER}@${POSTGRES_HOST}/${POSTGRES_DB}'
           SCHEDDER_POSTGRES: 'postgresql://postgres:dev_password@database/postgres'
+          SCHEDDER_PHOTOS: '/appdata/photos'
+        volumes:
+          - './appdata/photos:/appdata/photos'
  
     database:
-        image: 'docker.io/library/postgres:alpine'
+        image: 'docker.io/postgis/postgis:15-3.3-alpine'
         networks:
           - backend
         volumes:
-          - './postgres:/var/lib/postgresql/data'
+          - './appdata/postgres:/var/lib/postgresql/data'
         environment:
           POSTGRES_PASSWORD: 'dev_password'
 

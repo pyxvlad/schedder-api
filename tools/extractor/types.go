@@ -118,7 +118,7 @@ func (e Endpoint) CamelCase() string {
 func (e Endpoint) TypeScriptParameters() string {
 	first := true
 	sb := strings.Builder{}
-	r, err := regexp.Compile(`\{.+\}`)
+	r, err := regexp.Compile(`\{[^\{]+\}`)
 	if err != nil {
 		panic(err)
 	}
@@ -133,7 +133,6 @@ func (e Endpoint) TypeScriptParameters() string {
 		v = strings.TrimSuffix(v, "}")
 		sb.WriteString(v)
 		sb.WriteString(": string")
-
 	}
 
 	if e.Input != nil {
@@ -153,14 +152,14 @@ func (e Endpoint) TypeScriptParameters() string {
 }
 
 func (e Endpoint) TypeScriptOutput(enclosed bool) string {
-	var name string
 	if e.Output == nil {
-		name = "unknown"
 		if enclosed {
 			return ""
 		}
+		return "unknown"
 	}
 
+	name := e.Output.Name
 	if enclosed {
 		return "<" + name + ">"
 	}
@@ -168,8 +167,11 @@ func (e Endpoint) TypeScriptOutput(enclosed bool) string {
 }
 
 func (e Endpoint) TypeScriptPath() string {
-	path := strings.ReplaceAll(e.Path, "{", "\" + ")
+	path := `"` + e.Path + `"`
+	path = strings.ReplaceAll(path, "{", "\" + ")
 	path = strings.ReplaceAll(path, "}", " + \"")
+	path = strings.TrimSuffix(path, ` + ""`)
+	fmt.Printf("path: %v\n", path)
 	return path
 }
 
@@ -283,10 +285,6 @@ func (f Field) TypeScriptType() string {
 	default:
 		panic("don't know how to typescriptify " + f.TypeName)
 	}
-
-	if f.OmitEmpty {
-		return "?" + typename
-	}
 	return typename
 }
 
@@ -380,6 +378,13 @@ func (o *Object) AsTypeScriptFunctionArgs() string {
 	return sb.String()
 }
 
+func (o *Object) AsTypeScriptArray() string {
+	if o.Name == "UUID" {
+		return "string"
+	}
+	return o.Name
+}
+
 // ObjectStore stores all the objects, this type alias is used for convenience
 type ObjectStore map[string]*Object
 
@@ -420,7 +425,6 @@ func (os ObjectStore) extractStruct(name string, st *ast.StructType) {
 		}
 	}
 
-	fmt.Printf("LOOK: %#v\n", fields)
 	os[name].Name = name
 	os[name].Arrays = arrays
 	os[name].Fields = fields
