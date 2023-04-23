@@ -73,6 +73,14 @@ type TokenGenerationRequest struct {
 	Device string `json:"device"`
 }
 
+
+// PasswordlessTokenGenerationRequest represents the parameters that the
+// passwordless token generation endpoint expects.
+type PasswordlessTokenGenerationRequest struct {
+	// Phone represents the phone of the user that wants a new session token.
+	Phone string `json:"phone,omitempty"`
+}
+
 // sessionResponse represents a session.
 type sessionResponse struct {
 	// SessionID is the ID of the session.
@@ -122,11 +130,7 @@ type BusinessSettingRequest struct {
 	// Business represents the new business state of the account.
 	Business bool `json:"business"`
 }
-
-// CreateAccount is the endpoint used for creating new user accounts.
-func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
-	// TODO: move this outside, but where?
-	generateVerificationCode := func() (string, error) {
+func generateVerificationCode() (string, error) {
 		const (
 			max = 1000000
 			min = 100000
@@ -138,26 +142,39 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		i := randomNumber.Int64() + min
 		return fmt.Sprint(i), nil
 	}
+
+
+// CreateAccount is the endpoint used for creating new user accounts.
+func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
+	// TODO: move this outside, but where?
 	ctx := r.Context()
 	request := ctx.Value(CtxJSON).(*AccountCreationRequest)
-	rawPassword := []byte(request.Password)
-
-	if (len(rawPassword) < 8) || (len(rawPassword) > 64) {
-		jsonError(w, http.StatusBadRequest, "password too short")
-		return
-	}
-
 	var resp AccountCreationResponse
-	passwordBytes, err := bcrypt.GenerateFromPassword(
-		[]byte(request.Password), BcryptRounds,
-	)
+	var password sql.NullString
+	if request.Password != "" {
+		rawPassword := []byte(request.Password)
 
-	if err != nil {
-		jsonError(w, http.StatusInternalServerError, err.Error())
-		return
+		if (len(rawPassword) < 8) || (len(rawPassword) > 64) {
+			jsonError(w, http.StatusBadRequest, "password too short")
+			return
+		}
+
+		passwordBytes, err := bcrypt.GenerateFromPassword(
+			[]byte(request.Password), BcryptRounds,
+		)
+
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		password.String = string(passwordBytes)
+		password.Valid = true
+
+	} else {
+		password.Valid = false
 	}
 
-	password := string(passwordBytes)
 	if request.Email == "" && request.Phone == "" {
 		jsonError(w, http.StatusBadRequest, "expected phone or email")
 		return
@@ -220,7 +237,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		tx.Commit(ctx)
 	} else if request.Phone != "" {
 		phone := strings.Map(func(r rune) rune {
-			if r == '+' ||  unicode.IsDigit(r) {
+			if r == '+' || unicode.IsDigit(r) {
 				return r
 			}
 			return -1
@@ -323,6 +340,9 @@ func getPassword(ctx context.Context, db *database.Queries, email, phone string)
 	if email == "" && phone == "" {
 		return "", uuid.Nil, errors.New("expected phone or email")
 	}
+
+	var password sql.NullString
+	var accountID uuid.UUID
 	if email != "" {
 		var row database.GetPasswordByEmailRow
 		row, err := db.GetPasswordByEmail(
@@ -332,7 +352,7 @@ func getPassword(ctx context.Context, db *database.Queries, email, phone string)
 		if err != nil {
 			return "", uuid.Nil, errors.New("no user with email")
 		}
-		return row.Password, row.AccountID, nil
+		password, accountID = row.Password, row.AccountID
 	} else if phone != "" {
 		var row database.GetPasswordByPhoneRow
 		row, err := db.GetPasswordByPhone(
@@ -342,11 +362,48 @@ func getPassword(ctx context.Context, db *database.Queries, email, phone string)
 		if err != nil {
 			return "", uuid.Nil, errors.New("no user with phone")
 		}
-		return row.Password, row.AccountID, nil
+		password, accountID = row.Password, row.AccountID
+	} else {
+		panic(
+			"impossible case logically: Email and Password have been checked",
+		)
 	}
-	panic(
-		"impossible case logically: Email and Password have been checked",
-	)
+
+	if !password.Valid {
+		return "", uuid.Nil, errors.New("passwordless account")
+	}
+
+	return password.String, accountID, nil
+}
+
+func (a *API) GeneratePasswordlessToken(w http.ResponseWriter, r * http.Request) {
+	ctx := r.Context()
+	request := ctx.Value(CtxJSON).(*PasswordlessTokenGenerationRequest)
+
+	accountID, errMessage := findAccountByEmailOrPhone( ctx, a.db, "" , request.Phone)
+	if errMessage != "" {
+		jsonError(w, http.StatusInternalServerError, errMessage)
+		return
+	}
+
+	code, err := generateVerificationCode()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "couldn't generate code")
+		return
+	}
+
+	err = a.phoneVerifier.SendVerification(request.Phone, code)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "couldn't send code")
+	}
+
+	params := database.CreateVerificationCodeParams{
+		AccountID: accountID,
+		VerificationCode: code,
+		Scope: database.VerificationScopePasswordlessLogin,
+	}
+
+	a.db.CreateVerificationCode(ctx, params)
 }
 
 // GenerateToken creates a new token for the user.
@@ -373,6 +430,7 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	err = bcrypt.CompareHashAndPassword(

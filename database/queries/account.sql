@@ -5,6 +5,9 @@ INSERT INTO accounts (email, password, account_name) VALUES ($1, $2, $3) RETURNI
 -- name: CreateAccountWithPhone :one
 INSERT INTO accounts (phone, password, account_name) VALUES ($1, $2, $3) RETURNING account_id, email, phone, account_name;
 
+-- name: CreatePasswordlessAccountWithPhone :one
+INSERT INTO accounts (phone, password, account_name) VALUES ($1, NULL, $2) RETURNING account_id, email, phone, account_name;
+
 -- name: ActivateAccount :exec
 UPDATE accounts SET activated = true WHERE account_id = $1;
 

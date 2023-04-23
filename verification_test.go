@@ -3,6 +3,7 @@ package schedder_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,6 +43,7 @@ func TestActivateAccount(t *testing.T) {
 	var request schedder.VerifyCodeRequest
 	request.Email = email
 	request.Code = api.codes[email]
+	request.Device = "Schedder Test"
 
 	err := json.NewEncoder(&b).Encode(request)
 	if err != nil {
@@ -221,4 +223,61 @@ func TestActivateAccountWithInvalidPhone(t *testing.T) {
 			http.StatusOK, resp.Status, response.Error,
 		)
 	}
+}
+
+func TestPasswordlessLogin(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+
+	phone := "+40743123123"
+	device := "schedder test"
+	api.registerPasswordlessUserByPhone(phone)
+	api.activateUserByPhone(phone)
+
+	passwordlessRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/accounts/self/passwordless",
+		strings.NewReader(`{"phone":"`+phone+`"}`),
+	)
+	w := httptest.NewRecorder()
+	api.ServeHTTP(w, passwordlessRequest)
+	var passwordlessResponse schedder.Response
+	err := json.NewDecoder(w.Result().Body).Decode(&passwordlessResponse)
+	if err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+
+	expect(t, "", passwordlessResponse.Error)
+	expect(t, http.StatusOK, w.Result().StatusCode)
+
+
+	tgr := schedder.VerifyCodeRequest{
+		Code:   api.codes[phone],
+		Phone:  phone,
+		Device: device,
+	}
+	var buffer bytes.Buffer
+	err = json.NewEncoder(&buffer).Encode(tgr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+
+	req := httptest.NewRequest(
+		http.MethodPost, "/accounts/self/verify", &buffer,
+	)
+	req.RemoteAddr = "127.0.0.1:1234"
+
+	api.ServeHTTP(w, req)
+	resp := w.Result()
+
+	var response schedder.VerifyCodeResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect(t, "", response.Error)
+	expect(t, http.StatusOK, resp.StatusCode)
 }

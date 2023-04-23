@@ -3,6 +3,7 @@ package schedder
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,8 @@ type VerifyCodeRequest struct {
 	Phone string `json:"phone,omitempty"`
 	// Code represents the code that needs to be verified.
 	Code string `json:"code"`
+	// Device represents the device this code was used on.
+	Device string `json:"device"`
 }
 
 // VerifyCodeResponse represents the response to the VerifyCode endpoint.
@@ -30,6 +33,8 @@ type VerifyCodeResponse struct {
 	Phone string `json:"phone,omitempty"`
 	// Scope represents the use of the code, i.e. register, magic login, etc.
 	Scope string `json:"scope"`
+	// Token represents the returned token for passwordless login.
+	Token string `json:"token,omitempty"`
 }
 
 func findAccountByEmailOrPhone(
@@ -68,25 +73,23 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	request := ctx.Value(CtxJSON).(*VerifyCodeRequest)
 
-	var params database.GetVerificationCodeScopeParams
-
-	// findAccountByEmailOrPhone :=
-	var errorMessage string
-
-	params.AccountID, errorMessage = findAccountByEmailOrPhone(
+	accountID, errorMessage := findAccountByEmailOrPhone(
 		ctx, a.db, request.Email, request.Phone,
 	)
-	if params.AccountID == uuid.Nil || errorMessage != "" {
+	if accountID == uuid.Nil || errorMessage != "" {
 		jsonError(w, http.StatusBadRequest, errorMessage)
 		return
 	}
 
+	var params database.GetVerificationCodeScopeParams
 	params.VerificationCode = request.Code
+	params.AccountID = accountID
 	scope, err := a.db.GetVerificationCodeScope(ctx, params)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid code")
 		return
 	}
+	var response VerifyCodeResponse
 
 	switch scope {
 	case database.VerificationScopeRegister:
@@ -95,11 +98,26 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
+	case database.VerificationScopePasswordlessLogin:
+		ip, err := getIPFromRequest(r)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "not implemented")
+			return
+		}
+		params := database.CreateSessionTokenParams{
+			AccountID: params.AccountID, Ip: ip, Device: request.Device,
+		}
+		token, err := a.db.CreateSessionToken(ctx, params)
+		if err != nil {
+			jsonError(w, http.StatusInternalServerError, "couldn't generate token")
+			return
+		}
+
+		response.Token = base64.RawStdEncoding.EncodeToString(token)
 	default:
 		jsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
-	var response VerifyCodeResponse
 	response.Email = request.Email
 	response.Phone = request.Phone
 	response.Scope = string(scope)

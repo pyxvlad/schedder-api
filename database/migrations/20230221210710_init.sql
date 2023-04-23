@@ -13,7 +13,7 @@ CREATE TABLE photos (
 
 CREATE TABLE accounts (
 	account_id uuid DEFAULT gen_random_uuid(),
-	password text NOT NULL,
+	password text DEFAULT NULL,
 	email text UNIQUE,
 	phone text UNIQUE,
 	account_name text NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE accounts (
 	CONSTRAINT email_or_phone CHECK(email != NULL OR phone != NULL)
 );
 
-CREATE TYPE verification_scope AS ENUM ('register');
+CREATE TYPE verification_scope AS ENUM ('register', 'passwordless_login');
 
 CREATE TABLE verification_codes (
 	account_id UUID REFERENCES accounts(account_id) NOT NULL,

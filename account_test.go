@@ -322,6 +322,35 @@ func TestRegisterWithDuplicatePhone(t *testing.T) {
 	expect(t, "phone already used", response.Error)
 }
 
+func TestRegisterPasswordlessWithPhone(t *testing.T) {
+	t.Parallel()
+	api := BeginTx(t)
+	defer api.Rollback()
+	phone := "+40743123123"
+
+	var buffer bytes.Buffer
+	data := schedder.AccountCreationRequest{
+		Phone: phone,
+	}
+	err := json.NewEncoder(&buffer).Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/accounts", &buffer)
+	w := httptest.NewRecorder()
+
+	api.ServeHTTP(w, req)
+	resp := w.Result()
+	var response schedder.AccountCreationResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%#v", response)
+	expect(t, http.StatusCreated, resp.StatusCode)
+	expect(t, phone, response.Phone)
+}
+
 func TestGenerateTokenWithEmail(t *testing.T) {
 	t.Parallel()
 

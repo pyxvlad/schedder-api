@@ -70,6 +70,9 @@ func New(
 		r.With(WithJSON[AccountCreationRequest]).Post("/", api.CreateAccount)
 		r.Route("/self", func(r chi.Router) {
 			r.With(WithJSON[VerifyCodeRequest]).Post("/verify", api.VerifyCode)
+			r.With(
+				WithJSON[PasswordlessTokenGenerationRequest],
+			).Post("/passwordless", api.GeneratePasswordlessToken)
 			r.Group(func(r chi.Router) {
 				r.Use(api.AuthenticatedEndpoint)
 				r.Post("/photo", api.SetProfilePhoto)

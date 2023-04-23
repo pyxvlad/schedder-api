@@ -178,11 +178,35 @@ func (a *APITX) registerUserByPhone(phone, password string) uuid.UUID {
 	return data.AccountID
 }
 
+func (a *APITX) registerPasswordlessUserByPhone(phone string) uuid.UUID {
+	reader := strings.NewReader("{\"phone\": \"" + phone + "\"}")
+	req := httptest.NewRequest(http.MethodPost, "/accounts", reader)
+	w := httptest.NewRecorder()
+	a.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+
+	var data schedder.AccountCreationResponse
+	err := json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	
+	expect(a.t, "", data.Error)
+	if resp.StatusCode != http.StatusCreated {
+		a.t.Fatalf("register_user: got status %s", resp.Status)
+	}
+	return data.AccountID
+}
+
 func (a *APITX) activateUserByEmail(email string) {
 	b := bytes.Buffer{}
 	var request schedder.VerifyCodeRequest
 	request.Email = email
 	request.Code = a.codes[email]
+	request.Device = "schedder test"
 
 	err := json.NewEncoder(&b).Encode(request)
 	if err != nil {
@@ -202,7 +226,7 @@ func (a *APITX) activateUserByEmail(email string) {
 
 	if resp.StatusCode != http.StatusOK || response.Error != "" {
 		a.t.Fatalf(
-			"Expected %d without error, got %s with error %v",
+			"Expected %d without error, got %s with error: %v",
 			http.StatusOK, resp.Status, response.Error,
 		)
 	}
