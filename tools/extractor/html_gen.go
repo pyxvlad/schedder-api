@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"sort"
 	"text/template"
 )
 
@@ -57,11 +58,12 @@ const htmlFooter = `
 
 const htmlTemplate = `
 <div class="div_endpoint">
-	<h class="h_endpoint"> {{.Name}} {{.Method}} {{.Path}}</h> <br>
+	<h class="h_endpoint"> <em>{{.Name}}</em> {{.Method}} <code>{{.Path}}</code></h> <br>
+	<p class="p_json">{{.Doc}}</p>
 	{{range .Middlewares}}
 	<p class="p_json">{{.HTMLRequirement}}</p> {{end}}
 	{{if .InputString}}
-	<p class="p_json"> Example input for {{.Name}}:</p>
+	<p class="p_json"> Example input (as <code>{{.InputString}}</code>) for {{.Name}}:</p>
 <pre>
 <code>
 {{.Input.Sample 0 true}}
@@ -69,7 +71,7 @@ const htmlTemplate = `
 </pre>
 	{{end}}
 	{{if .OutputString}}
-	<p class="p_json"> Example output for {{.Name}}:</p>
+	<p class="p_json"> Example output (as <code>{{.OutputString}}</code>) for {{.Name}}:</p>
 <pre>
 <code>
 {{.Output.Sample 0 true}}
@@ -125,6 +127,10 @@ func generateHTML(objects ObjectStore, endpoints []Endpoint, path string) {
 	file.WriteString("<!-- " + GeneratedByMessage + " -->\n")
 
 	file.WriteString(htmlHeader)
+
+	sort.Slice(endpoints, func(i, j int) bool {
+		return endpoints[i].Path < endpoints[j].Path
+	})
 
 	for _, ep := range endpoints {
 		err = t1.Execute(file, ep)

@@ -164,7 +164,7 @@ func main() {
 	os.WriteFile("/tmp/routes.txt", b.Bytes(), 0777)
 
 	fset := token.NewFileSet()
-	packages, err := parser.ParseDir(fset, ".", nil, parser.Mode(0))
+	packages, err := parser.ParseDir(fset, ".", nil, parser.ParseComments)
 	if err != nil {
 		panic(err)
 	}
@@ -175,19 +175,29 @@ func main() {
 	}
 
 	objects := make(ObjectStore)
-	objects["UUID"] = &Object{Name: "UUID",Fields: nil, Arrays: nil, Objects: nil}
+	objects["UUID"] = &Object{Name: "UUID", Fields: nil, Arrays: nil, Objects: nil}
 
 	for _, file := range pkg.Files {
 		for _, declaration := range file.Decls {
-			decl, ok := declaration.(*ast.GenDecl)
-			if ok {
+			switch decl := declaration.(type) {
+			case *ast.GenDecl:
 				for _, spec := range decl.Specs {
 					typespec, ok := spec.(*ast.TypeSpec)
 					if ok {
 						_, ok := typespec.Type.(*ast.StructType)
 						if ok {
 							objects[typespec.Name.Name] = new(Object)
+							doc := strings.ReplaceAll(decl.Doc.Text(), "\n", " ")
+							objects[typespec.Name.Name].Doc = doc
 						}
+					}
+				}
+			case *ast.FuncDecl:
+				// TODO: make this also take into account the receiver
+				for i := range endpoints {
+					if endpoints[i].Name == decl.Name.Name {
+						doc := strings.ReplaceAll(decl.Doc.Text(), "\n", " ")
+						endpoints[i].Doc = doc
 					}
 				}
 			}

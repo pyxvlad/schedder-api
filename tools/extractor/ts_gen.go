@@ -9,9 +9,11 @@ import (
 )
 
 const tsClassTemplate = `
+/** {{.Doc}}*/
 export class {{.Name}} extends ApiResponse {
 {{- range .Fields}}
 	{{- if ne .Name "error"}}
+	/** {{.Doc}}*/
 	{{.Name}}{{- if .OmitEmpty}}?{{- end}}: {{.TypeScriptType}} = {{.TypeScriptDefault}};
 	{{- end}}
 {{- end}}
@@ -55,6 +57,7 @@ export class ConnectionService {
 	}
 
 {{- range .}}
+	/** {{.Doc}} */
 	{{.CamelCase}}({{.TypeScriptParameters}}): Observable<{{.TypeScriptOutput false}}> {
 		return this.http.{{.DartMethod}}{{.TypeScriptOutput true}}(this._baseUrl + {{.TypeScriptPath}}{{- if .InputString}}, request{{- end}})
 			.pipe(
@@ -94,6 +97,7 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 	}
 
 	delete(used, "API")
+	delete(used, "UUID")
 
 	t1 := template.New("ts")
 	t1, err := t1.Parse(tsClassTemplate)
@@ -109,7 +113,7 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 	file.WriteString("// " + GeneratedByMessage + "\n")
 
 	// add directly the ApiResponse class, the hardcoded way
-	file.WriteString("\nclass ApiResponse {\n\terror?: string = null;\n}\n")
+	file.WriteString("\nclass ApiResponse {\n\terror?: string = undefined;\n}\n")
 
 	keys := make([]string, 0, len(used))
 	for k := range used {

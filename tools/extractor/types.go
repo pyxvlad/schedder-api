@@ -65,6 +65,9 @@ type Endpoint struct {
 	Output *Object
 	// The middlewares used by this endpoint
 	Middlewares []Middleware
+
+	// Doc represents the associated documentation comment text.
+	Doc string
 }
 
 // InputString returns the name of the Input object or empty string if no input
@@ -183,6 +186,8 @@ type Field struct {
 	TypeName string
 	// OmitEmpty represents if the type is nullable
 	OmitEmpty bool
+	// Doc represents the associated documentation comment text.
+	Doc string
 }
 
 // Sample generates an example JSON value for this field in the form of:
@@ -290,7 +295,7 @@ func (f Field) TypeScriptType() string {
 
 func (f Field) TypeScriptDefault() string {
 	if f.OmitEmpty {
-		return "null"
+		return "undefined"
 	}
 	switch f.TypeName {
 	case "string", "UUID", "IP", "Time":
@@ -324,6 +329,9 @@ type Object struct {
 
 	Arrays  map[string]*Object
 	Objects map[string]*Object
+
+	// Doc represents the associated documentation comment.
+	Doc string
 }
 
 // Sample generates a sample JSON.
@@ -378,6 +386,10 @@ func (o *Object) AsTypeScriptFunctionArgs() string {
 	return sb.String()
 }
 
+func (o *Object) TypeScriptDoc() string {
+	return o.Doc
+}
+
 func (o *Object) AsTypeScriptArray() string {
 	if o.Name == "UUID" {
 		return "string"
@@ -394,12 +406,13 @@ func (os ObjectStore) extractStruct(name string, st *ast.StructType) {
 	for _, field := range st.Fields.List {
 		if field.Names != nil && field.Tag != nil {
 			tag, omitempty := fieldFromTag(field.Tag.Value)
+			doc := strings.ReplaceAll(field.Doc.Text(), "\n", " ")
 
 			switch t := field.Type.(type) {
 			case *ast.Ident:
-				fields = append(fields, Field{Name: tag, TypeName: t.Name, OmitEmpty: omitempty})
+				fields = append(fields, Field{Name: tag, TypeName: t.Name, OmitEmpty: omitempty, Doc: doc})
 			case *ast.SelectorExpr:
-				fields = append(fields, Field{Name: tag, TypeName: t.Sel.Name, OmitEmpty: omitempty})
+				fields = append(fields, Field{Name: tag, TypeName: t.Sel.Name, OmitEmpty: omitempty, Doc: doc})
 			case *ast.ArrayType:
 				switch elt := t.Elt.(type) {
 				case *ast.Ident:
