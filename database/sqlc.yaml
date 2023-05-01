@@ -8,3 +8,6 @@ sql:
         package: "database"
         sql_package: "pgx/v4"
         out: "."
+        overrides:
+          - db_type: "pg_catalog.interval"
+            go_type: "github.com/jackc/pgtype.Interval"

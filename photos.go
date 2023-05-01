@@ -32,11 +32,11 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	part := make([]byte, 512)
 	n, err := r.Body.Read(part)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 	if n != 512 {
-		jsonError(w, http.StatusBadRequest, "invalid image")
+		JsonError(w, http.StatusBadRequest, "invalid image")
 		return
 	}
 
@@ -45,13 +45,13 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	reader := io.MultiReader(bytes.NewReader(part), r.Body)
 
 	if content != "image/jpeg" && content != "image/png" {
-		jsonError(w, http.StatusBadRequest, "invalid image")
+		JsonError(w, http.StatusBadRequest, "invalid image")
 		return
 	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
@@ -64,13 +64,13 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 
 	photoID, err := a.db.AddTenantPhoto(ctx, atpp)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	count, err := a.db.CountPhotosWithHash(ctx, checksum[:])
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
@@ -79,7 +79,7 @@ func (a *API) AddTenantPhoto(w http.ResponseWriter, r *http.Request) {
 		os.WriteFile(a.photosPath+encoded, data, 0777)
 	}
 
-	jsonResp(w, http.StatusCreated, AddTenantPhotoResponse{PhotoID: photoID})
+	JsonResp(w, http.StatusCreated, AddTenantPhotoResponse{PhotoID: photoID})
 }
 
 func (a *API) ListTenantPhotos(w http.ResponseWriter, r *http.Request) {
@@ -89,14 +89,14 @@ func (a *API) ListTenantPhotos(w http.ResponseWriter, r *http.Request) {
 
 	photos, err := a.db.ListTenantPhotos(ctx, tenantID)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	var response ListTenantPhotosResponse
 	response.Photos = photos
 
-	jsonResp(w, http.StatusOK, response)
+	JsonResp(w, http.StatusOK, response)
 }
 
 func (a *API) DownloadTenantPhoto(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +105,7 @@ func (a *API) DownloadTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	photoIDParameter := chi.URLParam(r, "photoID")
 	photoID, err := uuid.Parse(photoIDParameter)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid photoID")
+		JsonError(w, http.StatusBadRequest, "invalid photoID")
 		return
 	}
 
@@ -115,7 +115,7 @@ func (a *API) DownloadTenantPhoto(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := a.db.GetTenantPhotoHash(ctx, gtphp)
 	if err != nil {
-		jsonError(w, http.StatusNotFound, "invalid photoID")
+		JsonError(w, http.StatusNotFound, "invalid photoID")
 		return
 	}
 
@@ -123,24 +123,24 @@ func (a *API) DownloadTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Here we return InternalServerError because if the photo is missing
 		// from the filesystem clearly there are some other issues.
-		jsonError(w, http.StatusInternalServerError, "invalid photo hash")
+		JsonError(w, http.StatusInternalServerError, "invalid photo hash")
 		return
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	written, err := io.Copy(w, file)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	if written != stat.Size() {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 }
@@ -155,13 +155,13 @@ func (a *API) DeleteTenantPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, err := a.db.DeleteTenantPhoto(ctx, dtpp)
 	if err != nil {
-		jsonError(w, http.StatusNotFound, "no photo")
+		JsonError(w, http.StatusNotFound, "no photo")
 		return
 	}
 
 	count, err := a.db.CountPhotosWithHash(ctx, hash)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
@@ -169,7 +169,7 @@ func (a *API) DeleteTenantPhoto(w http.ResponseWriter, r *http.Request) {
 		encoded := hex.EncodeToString(hash)
 		err = os.Remove(a.photosPath + encoded)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 	}
@@ -181,11 +181,11 @@ func (a *API) SetProfilePhoto(w http.ResponseWriter, r *http.Request) {
 	part := make([]byte, 512)
 	n, err := r.Body.Read(part)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 	if n != 512 {
-		jsonError(w, http.StatusBadRequest, "invalid image")
+		JsonError(w, http.StatusBadRequest, "invalid image")
 		return
 	}
 
@@ -194,13 +194,13 @@ func (a *API) SetProfilePhoto(w http.ResponseWriter, r *http.Request) {
 	reader := io.MultiReader(bytes.NewReader(part), r.Body)
 
 	if content != "image/jpeg" && content != "image/png" {
-		jsonError(w, http.StatusBadRequest, "invalid image")
+		JsonError(w, http.StatusBadRequest, "invalid image")
 		return
 	}
 
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
@@ -212,13 +212,13 @@ func (a *API) SetProfilePhoto(w http.ResponseWriter, r *http.Request) {
 
 	err = a.db.SetProfilePhoto(ctx, args)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	count, err := a.db.CountPhotosWithHash(ctx, checksum[:])
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 	if count == 1 {
@@ -235,31 +235,31 @@ func (a *API) DownloadProfilePhoto(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := a.db.GetProfilePhotoHash(ctx, authenticatedID)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "no photo")
+		JsonError(w, http.StatusBadRequest, "no photo")
 		return
 	}
 
 	encoded := hex.EncodeToString(hash)
 	file, err := os.Open(a.photosPath + encoded)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	written, err := io.Copy(w, file)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
 	if written != stat.Size() {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 }
@@ -269,13 +269,13 @@ func (a *API) DeleteProfilePhoto(w http.ResponseWriter, r *http.Request) {
 	authenticatedID := ctx.Value(CtxAuthenticatedID).(uuid.UUID)
 	hash, err := a.db.DeleteProfilePhoto(ctx, authenticatedID)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "no photo")
+		JsonError(w, http.StatusBadRequest, "no photo")
 		return
 	}
 
 	count, err := a.db.CountPhotosWithHash(ctx, hash)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 
@@ -283,7 +283,7 @@ func (a *API) DeleteProfilePhoto(w http.ResponseWriter, r *http.Request) {
 		encoded := hex.EncodeToString(hash)
 		err = os.Remove(a.photosPath + encoded)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 	}

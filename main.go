@@ -130,11 +130,18 @@ func New(
 				r.With(api.WithPhotoID).Delete(
 					"/photos/by-id/{photoID}", api.DeleteTenantPhoto,
 				)
+				r.Route("/personnel/{accountID}", func(r chi.Router) {
+					r.Use(api.WithAccountID)
+					r.With(WithJSON[SetScheduleRequest]).Post("/schedule", api.SetSchedule)
+					r.With(WithJSON[CreateServiceRequest]).Post("/services", api.CreateService)
+				})
 			})
 			r.Get("/photos", api.ListTenantPhotos)
+			r.Get("/services", api.ServicesForTenant)
 			r.With(api.WithPhotoID).Get(
 				"/photos/by-id/{photoID}", api.DownloadTenantPhoto,
 			)
+			r.With(api.WithAccountID).Get("/personnel/{accountID}/services", api.ServicesForPersonnel)
 		})
 	})
 	api.emailVerifier = emailVerifier
@@ -216,11 +223,11 @@ func Run() {
 	}
 }
 
-func jsonError(w http.ResponseWriter, statusCode int, message string) {
-	jsonResp(w, statusCode, Response{Error: message})
+func JsonError(w http.ResponseWriter, statusCode int, message string) {
+	JsonResp(w, statusCode, Response{Error: message})
 }
 
-func jsonResp[T any](w http.ResponseWriter, statusCode int, response T) {
+func JsonResp[T any](w http.ResponseWriter, statusCode int, response T) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	err := json.NewEncoder(w).Encode(response)

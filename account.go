@@ -155,7 +155,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		rawPassword := []byte(request.Password)
 
 		if (len(rawPassword) < 8) || (len(rawPassword) > 64) {
-			jsonError(w, http.StatusBadRequest, "password too short")
+			JsonError(w, http.StatusBadRequest, "password too short")
 			return
 		}
 
@@ -164,7 +164,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		)
 
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, err.Error())
+			JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -176,21 +176,21 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.Email == "" && request.Phone == "" {
-		jsonError(w, http.StatusBadRequest, "expected phone or email")
+		JsonError(w, http.StatusBadRequest, "expected phone or email")
 		return
 	}
 
 	if request.Email != "" {
 		_, err := mail.ParseAddress(request.Email)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid email")
+			JsonError(w, http.StatusBadRequest, "invalid email")
 			return
 		}
 
 		tx, err := a.txlike.Begin(ctx)
 		defer tx.Rollback(ctx)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 
@@ -203,12 +203,12 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 
 		row, err := queries.CreateAccountWithEmail(ctx, cawep)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "email already used")
+			JsonError(w, http.StatusBadRequest, "email already used")
 			return
 		}
 		code, err := generateVerificationCode()
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 		cvcp := database.CreateVerificationCodeParams{
@@ -218,7 +218,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		err = queries.CreateVerificationCode(ctx, cvcp)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 		resp.AccountID = row.AccountID
@@ -231,7 +231,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		// is down
 		err = a.emailVerifier.SendVerification(request.Email, code)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid email")
+			JsonError(w, http.StatusBadRequest, "invalid email")
 			return
 		}
 		tx.Commit(ctx)
@@ -252,13 +252,13 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(phone) != PhoneLength {
-			jsonError(w, http.StatusBadRequest, "phone too short/long")
+			JsonError(w, http.StatusBadRequest, "phone too short/long")
 			return
 		}
 
 		tx, err := a.txlike.Begin(ctx)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 		defer tx.Rollback(ctx)
@@ -270,13 +270,13 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		row, err := queries.CreateAccountWithPhone(ctx, cawpp)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "phone already used")
+			JsonError(w, http.StatusBadRequest, "phone already used")
 			return
 		}
 
 		code, err := generateVerificationCode()
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 
@@ -287,7 +287,7 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		err = queries.CreateVerificationCode(ctx, cvcp)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 
@@ -301,20 +301,20 @@ func (a *API) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		// down.
 		err = a.phoneVerifier.SendVerification(request.Phone, code)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid phone")
+			JsonError(w, http.StatusBadRequest, "invalid phone")
 			return
 		}
 
 		err = tx.Commit(ctx)
 		if err != nil {
-			jsonError(
+			JsonError(
 				w, http.StatusInternalServerError, "couldn't create account",
 			)
 			return
 		}
 	}
 
-	jsonResp(w, http.StatusCreated, resp)
+	JsonResp(w, http.StatusCreated, resp)
 }
 
 func getIPFromRequest(r *http.Request) (pgtype.Inet, error) {
@@ -382,19 +382,19 @@ func (a *API) GeneratePasswordlessToken(w http.ResponseWriter, r * http.Request)
 
 	accountID, errMessage := findAccountByEmailOrPhone( ctx, a.db, "" , request.Phone)
 	if errMessage != "" {
-		jsonError(w, http.StatusInternalServerError, errMessage)
+		JsonError(w, http.StatusInternalServerError, errMessage)
 		return
 	}
 
 	code, err := generateVerificationCode()
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't generate code")
+		JsonError(w, http.StatusInternalServerError, "couldn't generate code")
 		return
 	}
 
 	err = a.phoneVerifier.SendVerification(request.Phone, code)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't send code")
+		JsonError(w, http.StatusInternalServerError, "couldn't send code")
 	}
 
 	params := database.CreateVerificationCodeParams{
@@ -412,12 +412,12 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 
 	address, err := getIPFromRequest(r)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, err.Error())
+		JsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if len(tokenRequest.Device) < minimumLengthForDevice {
-		jsonError(w, http.StatusBadRequest, "device name too short")
+		JsonError(w, http.StatusBadRequest, "device name too short")
 		return
 	}
 
@@ -429,7 +429,7 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, err.Error())
+		JsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -437,7 +437,7 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 		[]byte(password), []byte(tokenRequest.Password),
 	)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid password")
+		JsonError(w, http.StatusBadRequest, "invalid password")
 		return
 	}
 
@@ -448,12 +448,12 @@ func (a *API) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := a.db.CreateSessionToken(r.Context(), cstp)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't generate token")
+		JsonError(w, http.StatusInternalServerError, "couldn't generate token")
 		return
 	}
 
 	resp.Token = base64.RawStdEncoding.EncodeToString(token)
-	jsonResp(w, http.StatusCreated, resp)
+	JsonResp(w, http.StatusCreated, resp)
 }
 
 // SessionsForAccount lists the sessions for an account.
@@ -462,7 +462,7 @@ func (a *API) SessionsForAccount(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := a.db.GetSessionsForAccount(r.Context(), authenticatedID)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't get sessions")
+		JsonError(w, http.StatusInternalServerError, "couldn't get sessions")
 		return
 	}
 
@@ -477,7 +477,7 @@ func (a *API) SessionsForAccount(w http.ResponseWriter, r *http.Request) {
 		resp.Sessions = append(resp.Sessions, session)
 	}
 
-	jsonResp(w, http.StatusOK, resp)
+	JsonResp(w, http.StatusOK, resp)
 }
 
 // RevokeSession revokes a session for the account.
@@ -490,11 +490,11 @@ func (a *API) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	}
 	affectedRows, err := a.db.RevokeSessionForAccount(r.Context(), rsfap)
 	if affectedRows != 1 {
-		jsonError(w, http.StatusBadRequest, "invalid session")
+		JsonError(w, http.StatusBadRequest, "invalid session")
 		return
 	}
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't revoke session")
+		JsonError(w, http.StatusInternalServerError, "couldn't revoke session")
 		return
 	}
 
@@ -509,7 +509,7 @@ func (a *API) AccountByEmailAsAdmin(w http.ResponseWriter, r *http.Request) {
 		r.Context(), sql.NullString{String: email, Valid: true},
 	)
 	if err != nil {
-		jsonError(w, http.StatusNotFound, "invalid email")
+		JsonError(w, http.StatusNotFound, "invalid email")
 		return
 	}
 
@@ -524,7 +524,7 @@ func (a *API) AccountByEmailAsAdmin(w http.ResponseWriter, r *http.Request) {
 	resp.IsAdmin = account.IsAdmin
 	resp.IsBusiness = account.IsBusiness
 
-	jsonResp(w, http.StatusOK, resp)
+	JsonResp(w, http.StatusOK, resp)
 }
 
 // SetAdmin sets whether an user is an admin.
@@ -541,7 +541,7 @@ func (a *API) SetAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	err := a.db.SetAdminForAccount(ctx, safap)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "hmm")
+		JsonError(w, http.StatusInternalServerError, "hmm")
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -562,7 +562,7 @@ func (a *API) SetBusiness(w http.ResponseWriter, r *http.Request) {
 	}
 	err := a.db.SetBusinessForAccount(ctx, sbfap)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "hmm")
+		JsonError(w, http.StatusInternalServerError, "hmm")
 	}
 
 	w.WriteHeader(http.StatusOK)

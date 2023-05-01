@@ -77,7 +77,7 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		ctx, a.db, request.Email, request.Phone,
 	)
 	if accountID == uuid.Nil || errorMessage != "" {
-		jsonError(w, http.StatusBadRequest, errorMessage)
+		JsonError(w, http.StatusBadRequest, errorMessage)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	params.AccountID = accountID
 	scope, err := a.db.GetVerificationCodeScope(ctx, params)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid code")
+		JsonError(w, http.StatusBadRequest, "invalid code")
 		return
 	}
 	var response VerifyCodeResponse
@@ -95,13 +95,14 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 	case database.VerificationScopeRegister:
 		err = a.db.ActivateAccount(ctx, params.AccountID)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
+		// fallthrough
 	case database.VerificationScopePasswordlessLogin:
 		ip, err := getIPFromRequest(r)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "not implemented")
+			JsonError(w, http.StatusInternalServerError, "not implemented")
 			return
 		}
 		params := database.CreateSessionTokenParams{
@@ -109,20 +110,20 @@ func (a *API) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		}
 		token, err := a.db.CreateSessionToken(ctx, params)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "couldn't generate token")
+			JsonError(w, http.StatusInternalServerError, "couldn't generate token")
 			return
 		}
 
 		response.Token = base64.RawStdEncoding.EncodeToString(token)
 	default:
-		jsonError(w, http.StatusInternalServerError, "not implemented")
+		JsonError(w, http.StatusInternalServerError, "not implemented")
 		return
 	}
 	response.Email = request.Email
 	response.Phone = request.Phone
 	response.Scope = string(scope)
 
-	jsonResp(w, http.StatusOK, response)
+	JsonResp(w, http.StatusOK, response)
 }
 
 // Verifier represents something that can send a verification code to an ID

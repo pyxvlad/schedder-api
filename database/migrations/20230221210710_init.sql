@@ -81,8 +81,20 @@ CREATE TABLE tenant_photos (
 	PRIMARY KEY(tenant_id, photo_id)
 );
 
+CREATE TYPE weekdays AS ENUM ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+
+CREATE TABLE schedules (
+	account_id uuid REFERENCES accounts(account_id) NOT NULL,
+	weekday weekdays NOT NULL,
+	starting_time time NOT NULL,
+	ending_time time NOT NULL,
+
+	PRIMARY KEY(account_id, weekday),
+	CHECK(starting_time < ending_time)
+);
+
 CREATE TABLE services (
-	service_id uuid DEFAULT gen_random_uuid(),
+	service_id uuid DEFAULT gen_random_uuid() NOT NULL,
 
 	tenant_id uuid REFERENCES tenants(tenant_id) NOT NULL,
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
@@ -109,6 +121,8 @@ CREATE TABLE services (
 -- +goose Down
 -- +goose StatementBegin
 DROP TABLE services;
+DROP TABLE schedules;
+DROP TYPE weekdays;
 DROP TABLE tenant_photos;
 DROP TABLE tenant_accounts;
 DROP TABLE tenants;

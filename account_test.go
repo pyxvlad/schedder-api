@@ -756,7 +756,7 @@ func TestRevokeSession(t *testing.T) {
 	resp = w.Result()
 
 	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		t.Fatal(err)
 	}
 

@@ -1,6 +1,7 @@
 package schedder
 
 import (
+	"fmt"
 	"net/http"
 	"unicode/utf8"
 
@@ -75,7 +76,7 @@ func (a *API) CreateTenant(w http.ResponseWriter, r *http.Request) {
 	runes := utf8.RuneCountInString(request.Name)
 
 	if runes < 8 || runes > 80 {
-		jsonError(w, http.StatusBadRequest, "invalid name")
+		JsonError(w, http.StatusBadRequest, "invalid name")
 		return
 	}
 
@@ -88,18 +89,19 @@ func (a *API) CreateTenant(w http.ResponseWriter, r *http.Request) {
 
 	response.TenantID, err = a.db.CreateTenantWithAccount(ctx, ctwap)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "couldn't create tenant")
+		fmt.Printf("err: %v\n", err)
+		JsonError(w, http.StatusBadRequest, "couldn't create tenant")
 		return
 	}
 
-	jsonResp(w, http.StatusCreated, response)
+	JsonResp(w, http.StatusCreated, response)
 }
 
 // Tenants lists all tenants.
 func (a *API) Tenants(w http.ResponseWriter, r *http.Request) {
 	tenants, err := a.db.GetTenants(r.Context())
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "couldn't get tenants")
+		JsonError(w, http.StatusInternalServerError, "couldn't get tenants")
 		return
 	}
 
@@ -113,7 +115,7 @@ func (a *API) Tenants(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	jsonResp(w, http.StatusOK, response)
+	JsonResp(w, http.StatusOK, response)
 }
 
 // AddTenantMember adds a member to the tenant.
@@ -132,7 +134,7 @@ func (a *API) AddTenantMember(w http.ResponseWriter, r *http.Request) {
 		r.Context(), atmp,
 	)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, "already member")
+		JsonError(w, http.StatusBadRequest, "already member")
 		return
 	}
 
@@ -144,7 +146,7 @@ func (a *API) TenantMembers(w http.ResponseWriter, r *http.Request) {
 	tenantID := r.Context().Value(CtxTenantID).(uuid.UUID)
 	rows, err := a.db.GetTenantMembers(r.Context(), tenantID)
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, "hmm")
+		JsonError(w, http.StatusInternalServerError, "hmm")
 		return
 	}
 
@@ -165,5 +167,5 @@ func (a *API) TenantMembers(w http.ResponseWriter, r *http.Request) {
 		response.Members = append(response.Members, member)
 	}
 
-	jsonResp(w, http.StatusOK, response)
+	JsonResp(w, http.StatusOK, response)
 }

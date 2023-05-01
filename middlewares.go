@@ -18,19 +18,19 @@ func (a *API) AuthenticatedEndpoint(next http.Handler) http.Handler {
 		auth := r.Header.Get("Authorization")
 		parts := strings.Split(auth, " ")
 		if parts[0] != "Bearer" {
-			jsonError(w, http.StatusUnauthorized, "invalid token")
+			JsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
 		tokenString := parts[1]
 		token, err := base64.RawStdEncoding.DecodeString(tokenString)
 		if err != nil {
-			jsonError(w, http.StatusUnauthorized, "invalid token")
+			JsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 		authenticatedID, err := a.db.GetSessionAccount(r.Context(), token)
 		if err != nil {
-			jsonError(w, http.StatusUnauthorized, "invalid token")
+			JsonError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
 
@@ -48,14 +48,14 @@ func (a *API) AdminEndpoint(next http.Handler) http.Handler {
 		authenticatedID := r.Context().Value(CtxAuthenticatedID).(uuid.UUID)
 		admin, err := a.db.GetAdminForAccount(r.Context(), authenticatedID)
 		if err != nil {
-			jsonError(
+			JsonError(
 				w, http.StatusInternalServerError,
 				"invalid state: invalid user is authenticated",
 			)
 			return
 		}
 		if !admin {
-			jsonError(w, http.StatusForbidden, "not admin")
+			JsonError(w, http.StatusForbidden, "not admin")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -70,7 +70,7 @@ func (a *API) WithSessionID(next http.Handler) http.Handler {
 
 		sessionID, err := uuid.Parse(sessionString)
 		if err != nil {
-			jsonError(w, http.StatusNotFound, "invalid session")
+			JsonError(w, http.StatusNotFound, "invalid session")
 			return
 		}
 
@@ -88,7 +88,7 @@ func (a *API) WithAccountID(next http.Handler) http.Handler {
 
 		accountID, err := uuid.Parse(accountString)
 		if err != nil {
-			jsonError(w, http.StatusNotFound, "invalid account")
+			JsonError(w, http.StatusNotFound, "invalid account")
 			return
 		}
 
@@ -106,7 +106,7 @@ func (a *API) WithTenantID(next http.Handler) http.Handler {
 
 		tenantID, err := uuid.Parse(tenantString)
 		if err != nil {
-			jsonError(w, http.StatusNotFound, "invalid tenant")
+			JsonError(w, http.StatusNotFound, "invalid tenant")
 			return
 		}
 
@@ -128,11 +128,11 @@ func (a *API) TenantManagerEndpoint(next http.Handler) http.Handler {
 
 		isManager, err := a.db.IsTenantManager(r.Context(), params)
 		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "yes")
+			JsonError(w, http.StatusInternalServerError, "yes")
 			return
 		}
 		if !isManager {
-			jsonError(w, http.StatusForbidden, "not manager")
+			JsonError(w, http.StatusForbidden, "not manager")
 		}
 
 		next.ServeHTTP(w, r)
@@ -147,7 +147,7 @@ func WithJSON[T any](next http.Handler) http.Handler {
 		request := new(T)
 		err := decoder.Decode(request)
 		if err != nil {
-			jsonError(w, http.StatusBadRequest, "invalid json")
+			JsonError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 		ctx := context.WithValue(r.Context(), CtxJSON, request)
@@ -164,7 +164,7 @@ func (a *API) WithPhotoID(next http.Handler) http.Handler {
 
 		photoID, err := uuid.Parse(photoString)
 		if err != nil {
-			jsonError(w, http.StatusNotFound, "invalid photo")
+			JsonError(w, http.StatusNotFound, "invalid photo")
 			return
 		}
 
