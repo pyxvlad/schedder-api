@@ -130,18 +130,25 @@ func New(
 				r.With(api.WithPhotoID).Delete(
 					"/photos/by-id/{photoID}", api.DeleteTenantPhoto,
 				)
-				r.Route("/personnel/{accountID}", func(r chi.Router) {
-					r.Use(api.WithAccountID)
-					r.With(WithJSON[SetScheduleRequest]).Post("/schedule", api.SetSchedule)
-					r.With(WithJSON[CreateServiceRequest]).Post("/services", api.CreateService)
-				})
 			})
 			r.Get("/photos", api.ListTenantPhotos)
 			r.Get("/services", api.ServicesForTenant)
 			r.With(api.WithPhotoID).Get(
 				"/photos/by-id/{photoID}", api.DownloadTenantPhoto,
 			)
-			r.With(api.WithAccountID).Get("/personnel/{accountID}/services", api.ServicesForPersonnel)
+			r.Route("/personnel/{accountID}", func(r chi.Router) {
+				r.Use(api.WithAccountID)
+				r.Group(func(r chi.Router) {
+					r.Use(
+						api.AuthenticatedEndpoint,
+						api.TenantManagerEndpoint,
+					)
+					r.With(WithJSON[SetScheduleRequest]).Post("/schedule", api.SetSchedule)
+					r.With(WithJSON[CreateServiceRequest]).Post("/services", api.CreateService)
+				})
+				r.Get("/services", api.ServicesForPersonnel)
+				r.Post("/services/{serviceID}/schedule", api.CreateAppointment)
+			})
 		})
 	})
 	api.emailVerifier = emailVerifier
@@ -194,7 +201,10 @@ func Run() {
 	if err != nil {
 		panic(err)
 	}
-	database.MigrateDB(stdDB)
+	err = database.MigrateDB(stdDB)
+	if err != nil {
+		panic(err)
+	}
 	if err = stdDB.Close(); err != nil {
 		panic(err)
 	}

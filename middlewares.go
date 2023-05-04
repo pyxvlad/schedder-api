@@ -174,4 +174,21 @@ func (a *API) WithPhotoID(next http.Handler) http.Handler {
 	})
 }
 
+// WithServiceID is a middleware that ensures the serviceID URL parameter is
+// present and makes it available as an UUID in the context using CtxPhotoID.
+func (a *API) WithServiceID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		photoString := chi.URLParam(r, "serviceID")
+
+		serviceID, err := uuid.Parse(photoString)
+		if err != nil {
+			JsonError(w, http.StatusNotFound, "invalid photo")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), CtxServiceID, serviceID)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 

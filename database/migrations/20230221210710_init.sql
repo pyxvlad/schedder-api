@@ -115,11 +115,33 @@ CREATE TABLE services (
 	PRIMARY KEY(service_id)
 );
 
+CREATE TYPE appointment_status AS ENUM ('pending', 'cancelled', 'done');
+CREATE TABLE appointments (
+	appointment_id uuid DEFAULT gen_random_uuid() NOT NULL,
+	service_id uuid REFERENCES services(service_id) NOT NULL,
+
+	account_id uuid REFERENCES accounts(account_id) NOT NULL,
+
+	starting timestamp NOT NULL,
+
+	status appointment_status DEFAULT 'pending' NOT NULL,
+
+	PRIMARY KEY(appointment_id),
+
+	-- check that the starting time is a multiple of 30 minutes as a Unix Timestamp
+	CONSTRAINT starting_30mins_multiple CHECK((FLOOR(EXTRACT(epoch FROM starting)/60) % 30) = 0),
+
+
+	-- check that there is a unique combination of account_id & starting
+	CONSTRAINT unique_starting_for_account UNIQUE(account_id, starting)
+);
 
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TABLE appointments;
+DROP TYPE appointment_status;
 DROP TABLE services;
 DROP TABLE schedules;
 DROP TYPE weekdays;
