@@ -1,4 +1,14 @@
 // Package schedder implements the backend API for the schedder project.
+// 
+// Formats used inside the HTTP API:
+// - timestamps are represented as described by
+//   https://www.rfc-editor.org/rfc/rfc3339.html (it has an examples section)
+//   example: 2023-12-19T16:39:57+03:00 (where the +03:00 is the offset to UTC)
+// - phone numbers are represented in international format
+//   example: +40743123123
+// - emails are represented in the "common" format
+//   example: somebody@example.com
+
 package schedder
 
 import (
@@ -132,7 +142,6 @@ func New(
 				)
 			})
 			r.Get("/photos", api.ListTenantPhotos)
-			r.Get("/services", api.ServicesForTenant)
 			r.With(api.WithPhotoID).Get(
 				"/photos/by-id/{photoID}", api.DownloadTenantPhoto,
 			)
@@ -147,8 +156,18 @@ func New(
 					r.With(WithJSON[CreateServiceRequest]).Post("/services", api.CreateService)
 				})
 				r.Get("/services", api.ServicesForPersonnel)
-				r.Post("/services/{serviceID}/schedule", api.CreateAppointment)
 			})
+
+			r.Route("/services", func(r chi.Router) {
+				r.Get("/", api.ServicesForTenant)
+				r.Route("/{serviceID}", func(r chi.Router) {
+					r.Use(api.WithServiceID)
+					r.With(api.AuthenticatedEndpoint, WithJSON[CreateAppointmentRequest]).Post("/schedule", api.CreateAppointment)
+					r.With(WithJSON[TimetableRequest]).Get("/timetable", api.Timetable)
+				})
+
+			})
+
 		})
 	})
 	api.emailVerifier = emailVerifier

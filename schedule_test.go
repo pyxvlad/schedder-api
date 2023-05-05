@@ -32,7 +32,7 @@ func TestSetSchedule(t *testing.T) {
 	password := "hackmenow"
 
 	tenantName := "Zâna Măseluță"
-	weekday := "monday"
+	weekday := time.Monday
 
 	tenantID := api.createTenantAndAccount(email, password, tenantName)
 	accountID := api.findAccountByEmail(email)

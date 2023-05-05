@@ -503,6 +503,44 @@ func (a *APITX) createService(
 	return response.ServiceID
 }
 
+func (a *APITX) setSchedule(token string, personnelID uuid.UUID, tenantID uuid.UUID, starting time.Time, ending time.Time, weekday time.Weekday) {
+	endpoint := fmt.Sprintf(
+		"/tenants/%s/personnel/%s/schedule", tenantID, personnelID,
+	)
+
+	a.t.Log(endpoint)
+
+	req, err := NewJSONRequest(
+		http.MethodPost,
+		endpoint,
+		schedder.SetScheduleRequest{
+			Weekday: weekday,
+			Starting: starting,
+			Ending: ending,
+		},
+	)
+	req.Header.Add( "Authorization", "Bearer " + token)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		a.t.Log(resp.Status)
+		var response schedder.Response
+		io.Copy(os.Stdout, resp.Body)
+		err := json.NewDecoder(resp.Body).Decode(&response)
+		if err != nil {
+			a.t.Fatal(err)
+		}
+
+		a.t.Fatalf("Result: %s: %s", resp.Status, response.Error)
+	}
+}
+
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{
 		{http.MethodPost, "/accounts"},

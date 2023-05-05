@@ -11,3 +11,5 @@ sql:
         overrides:
           - db_type: "pg_catalog.interval"
             go_type: "github.com/jackc/pgtype.Interval"
+          - db_type: "weekdays"
+            go_type: "time.Weekday"

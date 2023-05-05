@@ -10,3 +10,6 @@ SELECT service_id, account_id, service_name, price, duration FROM services WHERE
 -- name: GetServices :many
 SELECT service_id, service_name, price, duration FROM services WHERE tenant_id = @tenant_id AND account_id = @account_id;
 
+-- name: GetServiceDurationAndPersonnel :one
+SELECT duration, account_id FROM services WHERE service_id = @service_id;
+

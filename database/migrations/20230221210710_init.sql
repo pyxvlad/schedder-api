@@ -81,13 +81,15 @@ CREATE TABLE tenant_photos (
 	PRIMARY KEY(tenant_id, photo_id)
 );
 
-CREATE TYPE weekdays AS ENUM ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+-- CREATE TYPE weekdays AS ENUM ('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+-- See https://pkg.go.dev/time#Weekday
+CREATE DOMAIN weekdays AS int CHECK (VALUE IN (0, 1, 2, 3, 4, 5, 6));
 
 CREATE TABLE schedules (
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
 	weekday weekdays NOT NULL,
-	starting_time time NOT NULL,
-	ending_time time NOT NULL,
+	starting_time timetz NOT NULL,
+	ending_time timetz NOT NULL,
 
 	PRIMARY KEY(account_id, weekday),
 	CHECK(starting_time < ending_time)
@@ -122,7 +124,7 @@ CREATE TABLE appointments (
 
 	account_id uuid REFERENCES accounts(account_id) NOT NULL,
 
-	starting timestamp NOT NULL,
+	starting timestamptz NOT NULL,
 
 	status appointment_status DEFAULT 'pending' NOT NULL,
 
