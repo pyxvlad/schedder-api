@@ -81,6 +81,49 @@ const htmlTemplate = `
 	<p class="p_json"> Example with CURL: <code id="curl-{{.Name}}">{{.CurlExample}}</code>
 	<button onclick="CopyCurlExample('{{.Name}}')" class="copy_curl">Copy Example</button>
 	</p>
+
+
+	<script>
+		function {{.Name}}Handler() {
+
+			const data = {
+				{{- .HtmlFormDataGetters}}
+			}
+			console.log(data)
+			var request = new Request(
+				"http://localhost:2023{{.HtmlUrl}}",
+				{
+					method: "{{.Method}}",
+					{{if ne .Method "GET"}}
+					body: JSON.stringify(data),
+					{{end}}
+					headers: {
+						{{.HtmlHeaders}}
+					},
+				}
+			)
+			fetch(request).then(async (response) => {
+				console.log(response.status)
+				document.getElementById("{{.Name}}Status").innerHTML = "Status code: " + response.status + " <a href=\"https://http.cat/"+ response.status + "\">(see http.cat)</a>"
+				{{if .OutputString}}
+				document.getElementById("{{.Name}}Result").innerHTML = JSON.stringify(JSON.parse(await response.text()), undefined, "\t")
+				{{end}}
+			})
+
+			return false;
+		}
+	</script>
+	
+	<form name="{{.Name}}Form" onsubmit="{{.Name}}Handler(); return false" method="POST">
+		{{.HtmlFormInputs}}
+		<input type="submit" name="submit-button" value="Submit Request">
+		<p id="{{.Name}}Status"> Status Code: do a request please </p>
+		{{if .OutputString}}
+		<pre><code id="{{.Name}}Result">json result will be put here after you press "Submit Request"</code></pre>
+		{{end}}
+	</form>
+
+
 </div>
 `
 

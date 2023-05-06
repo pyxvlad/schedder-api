@@ -1,7 +1,6 @@
 package schedder
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 

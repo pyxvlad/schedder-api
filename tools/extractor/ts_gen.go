@@ -10,7 +10,7 @@ import (
 
 const tsClassTemplate = `
 /** {{.Doc}}*/
-export class {{.Name}} extends ApiResponse {
+export class {{.Name}}{{if .IsResponse}} extends ApiResponse{{end}} {
 {{- range .Fields}}
 	{{- if ne .Name "error"}}
 	/** {{.Doc}}*/
@@ -18,18 +18,20 @@ export class {{.Name}} extends ApiResponse {
 	{{- end}}
 {{- end}}
 {{- range $name, $arr := .Arrays}}
-	{{$name}}: {{$arr.AsTypeScriptArray}}[];
+	{{$name}}: {{$arr.AsTypeScriptArray}}[] = [];
 {{- end}}
 }
+`
+
+const tsConnectionServiceImports = `
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable, catchError, tap, throwError } from 'rxjs';
 `
 
 // Σ is used instead of backticks in the template in order to not interfere
 // with Go's raw strings
 const tsConnectionService = `
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { Observable, catchError, tap, throwError } from 'rxjs';
-import { GenerateTokenRequest, GenerateTokenResponse } from './client';
 
 @Injectable({
 
@@ -59,7 +61,12 @@ export class ConnectionService {
 {{- range .}}
 	/** {{.Doc}} */
 	{{.CamelCase}}({{.TypeScriptParameters}}): Observable<{{.TypeScriptOutput false}}> {
-		return this.http.{{.DartMethod}}{{.TypeScriptOutput true}}(this._baseUrl + {{.TypeScriptPath}}{{- if .InputString}}, request{{- end}})
+		const options = {
+			headers: new HttpHeaders({
+				{{.TypeScriptHeaders}}
+			})
+		}
+		return this.http.{{.DartMethod}}{{.TypeScriptOutput true}}(this._baseUrl + {{.TypeScriptPath}}{{- if .InputString}}, request{{- end}}, options)
 			.pipe(
 				catchError(this.handleError)
 			);
@@ -69,6 +76,7 @@ export class ConnectionService {
 `
 
 func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) {
+	// TODO: make this use Object.used instead
 	used := make(map[string]bool)
 	for k, v := range objects {
 		used[k] = false
@@ -95,9 +103,6 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 			}
 		}
 	}
-
-	delete(used, "API")
-	delete(used, "UUID")
 
 	t1 := template.New("ts")
 	t1, err := t1.Parse(tsClassTemplate)
@@ -131,24 +136,64 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 		}
 	}
 
-	for _, name := range keys {
-		obj := *objects[name]
+	for _, obj := range objects {
 		if obj.Name == "Response" {
 			continue
 		}
 		obj.Name = strings.TrimPrefix(obj.Name, "Get")
-		err = t1.Execute(file, obj)
-		if err != nil {
-			panic(err)
+		if obj.used {
+			err = t1.Execute(file, obj)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
+
+	err = file.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	connectionServiceFile, err := os.Create(path + "/connection.service.ts")
+	if err != nil {
+		panic(err)
+	}
+
+	connectionServiceFile.WriteString(tsConnectionServiceImports)
+
+	//import { GenerateTokenRequest, GenerateTokenResponse } from './client';
+	connectionServiceFile.WriteString("import {")
+	first := true
+	for _, obj := range objects {
+		if !obj.used {
+			continue
+		}
+		if obj.Name == "Response" {
+			continue
+		}
+		obj.Name = strings.TrimPrefix(obj.Name, "Get")
+		if first {
+			first = false
+		}
+		if !first {
+			connectionServiceFile.WriteString(", ")
+		}
+		connectionServiceFile.WriteString(obj.Name)
+	}
+
+	connectionServiceFile.WriteString("} from 'models/client'")
 
 	t2 := template.New("connection-service")
 
 	// Σ is used instead of backticks in order to not interfere with Go's raw
 	// strings
 	t2.Parse(strings.ReplaceAll(tsConnectionService, "Σ", "`"))
-	err = t2.Execute(file, endpoints)
+	err = t2.Execute(connectionServiceFile, endpoints)
+	if err != nil {
+		panic(err)
+	}
+
+	connectionServiceFile.Close()
 	if err != nil {
 		panic(err)
 	}

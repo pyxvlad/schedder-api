@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -39,6 +40,8 @@ func (m *Middleware) HTMLRequirement() string {
 		return "Required URL parameter: <code>tenantID</code>"
 	case "WithPhotoID":
 		return "Required URL parameter: <code>photoID</code>"
+	case "WithServiceID":
+		return "Required URL parameter: <code>serviceID</code>"
 	case "AdminEndpoint":
 		return "Requires the authenticated user to be an <strong>Admin</strong>"
 	case "TenantManagerEndpoint":
@@ -48,6 +51,31 @@ func (m *Middleware) HTMLRequirement() string {
 	default:
 		panic("I don't know how to make this into a requirement:" + m.Name)
 	}
+}
+
+// HTMLRequirement generates a requirement text to be used in the HTML
+// generator.
+func (m *Middleware) HTMLFormInput() string {
+	value := ""
+	switch m.Name {
+	case "WithSessionID":
+		value = "sessionID"
+	case "WithAccountID":
+		value = "accountID"
+	case "WithTenantID":
+		value = "tenantID"
+	case "WithPhotoID":
+		value = "photoID"
+	case "WithServiceID":
+		value = "serviceID"
+	case "AuthenticatedEndpoint":
+		value = "token"
+	}
+
+	if value != "" {
+		return fmt.Sprintf("\t\t\t<p> %s: <input type='' name='%s' value='%s'></p>\n", value, value, value)
+	}
+	return ""
 }
 
 // Endpoint represents an endpoint in the API.
@@ -125,6 +153,13 @@ func (e Endpoint) TypeScriptParameters() string {
 	if err != nil {
 		panic(err)
 	}
+
+	for _, m := range e.Middlewares {
+		if m.Name == "AuthenticatedEndpoint" {
+			sb.WriteString("token: string")
+			first = false
+		}
+	}
 	subs := r.FindAllString(e.Path, -1)
 	for _, v := range subs {
 		if first {
@@ -178,6 +213,64 @@ func (e Endpoint) TypeScriptPath() string {
 	return path
 }
 
+func (e Endpoint) HtmlFormInputs() string {
+
+	var buff bytes.Buffer
+
+	for _, m := range e.Middlewares {
+		buff.WriteString(m.HTMLFormInput())
+	}
+	if e.Input != nil {
+		for _, f := range e.Input.Fields {
+			fmt.Fprintf(&buff, "\t\t<p> %s: <input type='' name='%s' value='%s'></p>\n", f.Name, f.Name, strings.Trim(f.Example(), "\""))
+		}
+	}
+
+	return buff.String()
+}
+
+func (e Endpoint) HtmlFormDataGetters() string {
+	if e.Input == nil {
+		return ""
+	}
+	var buff bytes.Buffer
+	for _, f := range e.Input.Fields {
+		fmt.Fprintf(&buff, "\t\t\t\t%s: document.forms[\"%sForm\"][\"%s\"].value,\n", f.Name, e.Name, f.Name)
+	}
+
+	return buff.String()
+}
+
+func (e Endpoint) HtmlUrl() string {
+
+	next := strings.ReplaceAll(e.Path, "{", "\" + document.forms[\""+e.Name+"Form\"][\"")
+	next = strings.ReplaceAll(next, "}", "\"].value + \"")
+
+	fmt.Printf("next: %v\n", next)
+
+	return next
+}
+
+func (e Endpoint) HtmlHeaders() string {
+	var buff bytes.Buffer
+	for _, m := range e.Middlewares {
+		if m.Name == "AuthenticatedEndpoint" {
+			fmt.Fprintf(&buff, "\"Authorization\": document.forms[\"%sForm\"][\"token\"],", e.Name)
+		}
+	}
+	return buff.String()
+}
+
+func (e Endpoint) TypeScriptHeaders() string {
+	var buff bytes.Buffer
+	for _, m := range e.Middlewares {
+		if m.Name == "AuthenticatedEndpoint" {
+			buff.WriteString("Authorization: \"Bearer \" + token")
+		}
+	}
+	return buff.String()
+}
+
 // Field represents a field in a JSON request/response
 type Field struct {
 	// Name of the field
@@ -190,10 +283,7 @@ type Field struct {
 	Doc string
 }
 
-// Sample generates an example JSON value for this field in the form of:
-//
-//	"field": "sample value
-func (f Field) Sample() string {
+func (f Field) Example() string {
 	var value string
 	switch f.TypeName {
 	case "string":
@@ -237,11 +327,22 @@ func (f Field) Sample() string {
 		} else {
 			value = "false"
 		}
+	case "float64":
+		value = "4.20"
+	case "Duration":
+		value = "30"
 	default:
 		panic("unimplemented" + f.TypeName)
 	}
 
-	return Quote(f.Name) + ": " + value
+	return value
+}
+
+// Sample generates an example JSON value for this field in the form of:
+//
+//	"field": "sample value
+func (f Field) Sample() string {
+	return Quote(f.Name) + ": " + f.Example()
 }
 
 // DartName returns the Dart-Styled name of the field
@@ -273,6 +374,10 @@ func (f Field) DartType() string {
 		return "String"
 	case "bool":
 		return "bool"
+	case "float64":
+		return "float"
+	case "Duration":
+		return "int"
 	default:
 		panic("don't know how to dartify " + f.TypeName)
 	}
@@ -287,6 +392,10 @@ func (f Field) TypeScriptType() string {
 		typename = "string"
 	case "bool":
 		typename = "boolean"
+	case "Duration":
+		typename = "number"
+	case "float64":
+		typename = "number"
 	default:
 		panic("don't know how to typescriptify " + f.TypeName)
 	}
@@ -302,6 +411,10 @@ func (f Field) TypeScriptDefault() string {
 		return "\"\""
 	case "bool":
 		return "false"
+	case "float64":
+		return "0"
+	case "Duration":
+		return "0"
 	default:
 		panic("don't know what the default in TypeScript should be for " + f.TypeName)
 	}
@@ -316,6 +429,10 @@ func (f Field) UnDartify() string {
 	case "DateTime":
 		return ".toIso8601String()"
 	case "bool":
+		return ""
+	case "float":
+		return ""
+	case "int":
 		return ""
 	default:
 		panic("don't know how to undartify " + f.TypeName)
@@ -332,6 +449,23 @@ type Object struct {
 
 	// Doc represents the associated documentation comment.
 	Doc string
+
+	used bool
+}
+
+func (o *Object) SetUsed() {
+	o.used = true
+
+	for _, array := range o.Arrays {
+		array.SetUsed()
+	}
+	for _, object := range o.Objects {
+		object.SetUsed()
+	}
+}
+
+func (o *Object) IsResponse() bool {
+	return strings.HasSuffix(o.Name, "Response")
 }
 
 // Sample generates a sample JSON.
@@ -351,6 +485,9 @@ func (o *Object) Sample(level int, showOmitEmpty bool) string {
 		sb.WriteRune('\n')
 	}
 	for k, a := range o.Arrays {
+		if a == nil {
+			break
+		}
 
 		sb.WriteString(Indent(level + 1))
 		sb.WriteString(Quote(k))
@@ -393,6 +530,9 @@ func (o *Object) TypeScriptDoc() string {
 func (o *Object) AsTypeScriptArray() string {
 	if o.Name == "UUID" {
 		return "string"
+	}
+	if o.Name == "Time" {
+		return "Date"
 	}
 	return o.Name
 }
@@ -441,6 +581,7 @@ func (os ObjectStore) extractStruct(name string, st *ast.StructType) {
 	os[name].Name = name
 	os[name].Arrays = arrays
 	os[name].Fields = fields
+	os[name].used = false
 
 }
 

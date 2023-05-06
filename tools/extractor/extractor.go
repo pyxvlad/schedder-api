@@ -176,6 +176,7 @@ func main() {
 
 	objects := make(ObjectStore)
 	objects["UUID"] = &Object{Name: "UUID", Fields: nil, Arrays: nil, Objects: nil}
+	objects["Time"] = &Object{Name: "Time", Fields: nil, Arrays: nil, Objects: nil}
 
 	for _, file := range pkg.Files {
 		for _, declaration := range file.Decls {
@@ -230,6 +231,7 @@ func main() {
 		for _, m := range ep.Middlewares {
 			if m.Name == "WithJSON[...]" {
 				ep.Input = objects[m.TypeParam]
+				ep.Input.SetUsed()
 			}
 			fmt.Printf("\tmid: %v\n", m)
 		}
@@ -238,6 +240,10 @@ func main() {
 			ep.Output = objects[base+"Response"]
 		} else {
 			ep.Output = objects[ep.Name+"Response"]
+		}
+
+		if ep.Output != nil {
+			ep.Output.SetUsed()
 		}
 
 		if ep.Input != nil {
@@ -259,6 +265,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	objects["UUID"].used = false
+	objects["Time"].used = false
+	objects["API"].used = false
+
+	fmt.Println(strings.Repeat("*", 80))
 
 	generateHTML(objects, endpoints, path)
 	generateDart(objects, endpoints, path)

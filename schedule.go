@@ -9,7 +9,9 @@ import (
 )
 
 type SetScheduleRequest struct {
-	Weekday  string
+	// Weekday represents the day of the week for which to set the schedule.
+	// Valid values are: 0 (Sunday), 1 (Monday) ..., 6 (Saturday)
+	Weekday  time.Weekday
 	Starting time.Time
 	Ending   time.Time
 }
@@ -18,30 +20,14 @@ func (a *API) SetSchedule(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := ctx.Value(CtxAccountID).(uuid.UUID)
 	request := ctx.Value(CtxJSON).(*SetScheduleRequest)
-	weekdays := [...]database.Weekdays{
-		database.WeekdaysMonday,
-		database.WeekdaysTuesday,
-		database.WeekdaysWednesday,
-		database.WeekdaysThursday,
-		database.WeekdaysFriday,
-		database.WeekdaysSaturday,
-		database.WeekdaysSunday,
-	}
 
-	found := false
-	for _, v := range weekdays {
-		if request.Weekday == string(v) {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if request.Weekday < time.Sunday || request.Weekday > time.Saturday  {
 		JsonError(w, http.StatusBadRequest, "invalid weekday")
 		return
 	}
 	ssp := database.SetScheduleParams{
 		AccountID:    accountID,
-		Weekday:      database.Weekdays(request.Weekday),
+		Weekday:      request.Weekday,
 		StartingTime: request.Starting,
 		EndingTime:   request.Ending,
 	}
