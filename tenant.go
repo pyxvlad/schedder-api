@@ -29,6 +29,9 @@ type tenantsResponseEntry struct {
 	TenantID uuid.UUID `json:"tenant_id"`
 	// Name represents the name of the tenant.
 	Name string `json:"name"`
+
+	Rating float64 `json:"rating"`
+	ReviewCount int `json:"review_count"`
 }
 
 // TenantsResponse represents the response of the tenant listing endpoint.
@@ -99,7 +102,7 @@ func (a *API) CreateTenant(w http.ResponseWriter, r *http.Request) {
 
 // Tenants lists all tenants.
 func (a *API) Tenants(w http.ResponseWriter, r *http.Request) {
-	tenants, err := a.db.GetTenants(r.Context())
+	tenants, err := a.db.GetTenantsWithRating(r.Context())
 	if err != nil {
 		JsonError(w, http.StatusInternalServerError, "couldn't get tenants")
 		return
@@ -109,9 +112,22 @@ func (a *API) Tenants(w http.ResponseWriter, r *http.Request) {
 	response.Tenants = make([]tenantsResponseEntry, 0, len(tenants))
 
 	for _, t := range tenants {
+		rating := 0.0
+		if t.Rating.Valid {
+			rating = t.Rating.Float64
+		}
+		reviewCount := 0
+		if t.ReviewCount.Valid {
+			reviewCount = int(t.ReviewCount.Int64)
+		}
 		response.Tenants = append(
 			response.Tenants,
-			tenantsResponseEntry{TenantID: t.TenantID, Name: t.TenantName},
+			tenantsResponseEntry{
+				TenantID: t.TenantID,
+				Name: t.TenantName,
+				Rating: rating,
+				ReviewCount: reviewCount,
+			},
 		)
 	}
 
