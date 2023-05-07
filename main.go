@@ -168,6 +168,13 @@ func New(
 
 			})
 
+			r.Route("/reviews", func(r chi.Router) {
+				r.Get("/", api.Reviews)
+				r.With(
+					api.AuthenticatedEndpoint, WithJSON[CreateReviewRequest],
+				).Post("/", api.CreateReview)
+			})
+
 		})
 	})
 	api.emailVerifier = emailVerifier

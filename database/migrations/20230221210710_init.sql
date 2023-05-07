@@ -138,10 +138,22 @@ CREATE TABLE appointments (
 	CONSTRAINT unique_starting_for_account UNIQUE(account_id, starting)
 );
 
+CREATE TABLE reviews (
+	review_id uuid DEFAULT gen_random_uuid() NOT NULL,
+	account_id uuid REFERENCES accounts(account_id) NOT NULL,
+	tenant_id uuid REFERENCES tenants(tenant_id) NOT NULL,
+	message varchar(4096) NOT NULL,
+	rating int NOT NULL CHECK(rating > 0 AND rating < 6),
+
+	CONSTRAINT unique_account_and_tenant UNIQUE(account_id, tenant_id),
+	PRIMARY KEY(review_id)
+);
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP TABLE reviews;
 DROP TABLE appointments;
 DROP TYPE appointment_status;
 DROP TABLE services;

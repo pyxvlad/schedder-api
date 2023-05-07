@@ -288,7 +288,6 @@ func (a *APITX) generateToken(email, password string) (token string) {
 	a.ServeHTTP(w, req)
 
 	resp := w.Result()
-	expect(a.t, http.StatusCreated, resp.StatusCode)
 
 	var data schedder.TokenGenerationResponse
 	err = json.NewDecoder(resp.Body).Decode(&data)
@@ -297,6 +296,7 @@ func (a *APITX) generateToken(email, password string) (token string) {
 	}
 
 	expect(a.t, "", data.Error)
+	expect(a.t, http.StatusCreated, resp.StatusCode)
 
 	return data.Token
 }
@@ -539,6 +539,31 @@ func (a *APITX) setSchedule(token string, personnelID uuid.UUID, tenantID uuid.U
 
 		a.t.Fatalf("Result: %s: %s", resp.Status, response.Error)
 	}
+}
+
+func (a * APITX) createReview(token string, tenantID uuid.UUID, message string, rating int) {
+	request := schedder.CreateReviewRequest{Message: message, Rating: rating}
+	endpoint := fmt.Sprintf("/tenants/%s/reviews", tenantID)
+	r, err := NewJSONRequest(http.MethodPost, endpoint, request)
+	r.Header.Add("Authorization", "Bearer " + token)
+	if err != nil {
+		a.t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+	var response schedder.Response
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil && err != io.EOF {
+		a.t.Fatal(err)
+	}
+
+	expect(a.t, "", response.Error)
+	expect(a.t, http.StatusCreated, resp.StatusCode)
+
 }
 
 func TestWithInvalidJson(t *testing.T) {
