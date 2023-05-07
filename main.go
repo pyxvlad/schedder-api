@@ -1,5 +1,5 @@
 // Package schedder implements the backend API for the schedder project.
-// 
+//
 // Formats used inside the HTTP API:
 // - timestamps are represented as described by
 //   https://www.rfc-editor.org/rfc/rfc3339.html (it has an examples section)
@@ -101,6 +101,16 @@ func New(
 					r.Use(api.AuthenticatedEndpoint)
 					r.Use(api.WithSessionID)
 					r.Delete("/", api.RevokeSession)
+				})
+			})
+
+			r.Route("/favourites", func(r chi.Router) {
+				r.Use(api.AuthenticatedEndpoint)
+				r.Get("/", api.Favourites)
+				r.Route("/{tenantID}", func(r chi.Router) {
+					r.Use(api.WithTenantID)
+					r.Post("/", api.AddFavourite)
+					r.Delete("/", api.RemoveFavourite)
 				})
 			})
 		})

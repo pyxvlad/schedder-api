@@ -149,22 +149,30 @@ CREATE TABLE reviews (
 	PRIMARY KEY(review_id)
 );
 
+CREATE TABLE favourites (
+	account_id uuid REFERENCES accounts(account_id) NOT NULL,
+	tenant_id uuid REFERENCES tenants(tenant_id) NOT NULL,
+
+	PRIMARY KEY(account_id, tenant_id)
+);
+
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE reviews;
-DROP TABLE appointments;
-DROP TYPE appointment_status;
-DROP TABLE services;
-DROP TABLE schedules;
-DROP TYPE weekdays;
-DROP TABLE tenant_photos;
-DROP TABLE tenant_accounts;
-DROP TABLE tenants;
-DROP TABLE sessions;
-DROP TABLE verification_codes;
-DROP TYPE verification_scope;
-DROP TABLE accounts;
-DROP TABLE photos;
+DROP TABLE IF EXISTS favourites;
+DROP TABLE IF EXISTS reviews;
+DROP TABLE IF EXISTS appointments;
+DROP TYPE IF EXISTS appointment_status;
+DROP TABLE IF EXISTS services;
+DROP TABLE IF EXISTS schedules;
+DROP TYPE IF EXISTS weekdays;
+DROP TABLE IF EXISTS tenant_photos;
+DROP TABLE IF EXISTS tenant_accounts;
+DROP TABLE IF EXISTS tenants;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS verification_codes;
+DROP TYPE IF EXISTS verification_scope;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS photos;
 -- +goose StatementEnd

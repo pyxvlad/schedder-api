@@ -566,6 +566,26 @@ func (a * APITX) createReview(token string, tenantID uuid.UUID, message string, 
 
 }
 
+func (a *APITX) addFavourite(token string, tenantID uuid.UUID) {
+	endpoint := fmt.Sprintf("/accounts/self/favourites/%s", tenantID)
+	r := httptest.NewRequest(http.MethodPost, endpoint, nil)
+	w := httptest.NewRecorder()
+
+	r.Header.Add("Authorization", "Bearer " + token)
+
+	a.ServeHTTP(w, r)
+
+	resp := w.Result()
+	var response schedder.Response
+	err := json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil && err != io.EOF {
+		a.t.Fatal(err)
+	}
+
+	expect(a.t, "", response.Error)
+	expect(a.t, http.StatusCreated, resp.StatusCode)
+}
+
 func TestWithInvalidJson(t *testing.T) {
 	testdata := [][]string{
 		{http.MethodPost, "/accounts"},

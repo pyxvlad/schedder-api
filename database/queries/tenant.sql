@@ -22,3 +22,6 @@ INSERT INTO tenant_accounts (tenant_id, account_id, is_manager) SELECT @tenant_i
 -- name: GetTenantMembers :many
 SELECT accounts.account_id, account_name, email, phone, is_manager FROM accounts JOIN tenant_accounts ON accounts.account_id = tenant_accounts.account_id WHERE tenant_id = $1;
 
+
+
+
