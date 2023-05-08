@@ -235,7 +235,15 @@ func (e Endpoint) HtmlFormDataGetters() string {
 	}
 	var buff bytes.Buffer
 	for _, f := range e.Input.Fields {
-		fmt.Fprintf(&buff, "\t\t\t\t%s: document.forms[\"%sForm\"][\"%s\"].value,\n", f.Name, e.Name, f.Name)
+		buff.WriteString("\t\t\t\t")
+		conversion := ""
+		if f.TypeScriptType() == "number" {
+			conversion = "Number"
+		}
+		if f.TypeScriptType() == "boolean" {
+			conversion = "Boolean"
+		}
+		fmt.Fprintf(&buff, "%s: %s(document.forms[\"%sForm\"][\"%s\"].value),\n", f.Name, conversion, e.Name, f.Name)
 	}
 
 	return buff.String()
@@ -331,6 +339,9 @@ func (f Field) Example() string {
 		value = "4.20"
 	case "Duration":
 		value = "30"
+	case "int":
+		value = "0"
+
 	default:
 		panic("unimplemented" + f.TypeName)
 	}
@@ -378,6 +389,8 @@ func (f Field) DartType() string {
 		return "float"
 	case "Duration":
 		return "int"
+	case "int":
+		return "int"
 	default:
 		panic("don't know how to dartify " + f.TypeName)
 	}
@@ -395,6 +408,8 @@ func (f Field) TypeScriptType() string {
 	case "Duration":
 		typename = "number"
 	case "float64":
+		typename = "number"
+	case "int":
 		typename = "number"
 	default:
 		panic("don't know how to typescriptify " + f.TypeName)
@@ -414,6 +429,8 @@ func (f Field) TypeScriptDefault() string {
 	case "float64":
 		return "0"
 	case "Duration":
+		return "0"
+	case "int":
 		return "0"
 	default:
 		panic("don't know what the default in TypeScript should be for " + f.TypeName)
