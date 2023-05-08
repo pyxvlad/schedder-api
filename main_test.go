@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -58,38 +57,14 @@ func TestMain(m *testing.M) {
 func expect[T comparable](t *testing.T, expected, got T) {
 	t.Helper()
 	if expected != got {
-		_, file, line, ok := runtime.Caller(1)
-		if !ok {
-			panic("couldn't get caller")
-		}
-
-		wd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		file = strings.TrimPrefix(file, wd+"/")
-
-		t.Fatalf("%s:%d: expected %#v, got %#v\n", file, line, expected, got)
+		t.Fatalf("expected %#v, got %#v\n", expected, got)
 	}
 }
 
 func unexpect[T comparable](t *testing.T, unexpected, got T) {
 	t.Helper()
 	if unexpected == got {
-		_, file, line, ok := runtime.Caller(1)
-		if !ok {
-			panic("couldn't get caller")
-		}
-
-		wd, err := os.Getwd()
-		if err != nil {
-			panic(err)
-		}
-		file = strings.TrimPrefix(file, wd+"/")
-
-		t.Fatalf(
-			"%s:%d: unexpected %#v, got %#v\n", file, line, unexpected, got,
-		)
+		t.Fatalf("unexpected %#v, got %#v\n", unexpected, got)
 	}
 }
 
@@ -107,7 +82,7 @@ type APITX struct {
 	codes TestCodeStore
 }
 
-func BeginTx(t *testing.T) APITX {
+func BeginTx(t *testing.T) *APITX {
 	t.Helper()
 	tx, err := conn.Begin(context.Background())
 	if err != nil {
@@ -116,17 +91,18 @@ func BeginTx(t *testing.T) APITX {
 
 	photosPath := t.TempDir() + "/photos"
 
-	var api APITX
+	api := new(APITX)
 	api.codes = make(map[string]string)
 	api.API = schedder.New(tx, api.codes, api.codes, photosPath)
 	api.tx = tx
 	api.t = t
+	api.t.Cleanup(api.Rollback)
 	return api
 }
 
 func (a *APITX) Rollback() {
 	err := a.tx.Rollback(context.Background())
-	if err != nil {
+	if err != nil && err != pgx.ErrTxClosed{
 		a.t.Fatalf("testing: RollbackTx: %e", err)
 	}
 }
@@ -266,6 +242,7 @@ func (a *APITX) activateUserByPhone(phone string) {
 }
 
 func (a *APITX) generateToken(email, password string) (token string) {
+	a.t.Helper()
 	request := schedder.TokenGenerationRequest{
 		Email:    email,
 		Password: password,
