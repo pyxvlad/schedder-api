@@ -76,34 +76,6 @@ export class ConnectionService {
 `
 
 func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) {
-	// TODO: make this use Object.used instead
-	used := make(map[string]bool)
-	for k, v := range objects {
-		used[k] = false
-		for _, e := range endpoints {
-
-			if e.Input == v {
-				used[k] = true
-			} else if e.Output == v {
-				used[k] = true
-			}
-		}
-
-		if used[k] {
-			var f func(obj *Object)
-			f = func(obj *Object) {
-				for nk, nv := range obj.Arrays {
-					used[nk] = true
-					f(nv)
-				}
-				for nk, nv := range obj.Objects {
-					used[nk] = true
-					f(nv)
-				}
-			}
-		}
-	}
-
 	t1 := template.New("ts")
 	t1, err := t1.Parse(tsClassTemplate)
 	if err != nil {
@@ -120,12 +92,6 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 	// add directly the ApiResponse class, the hardcoded way
 	file.WriteString("\nclass ApiResponse {\n\terror?: string = undefined;\n}\n")
 
-	keys := make([]string, 0, len(used))
-	for k := range used {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
 	sort.Slice(endpoints, func(i, j int) bool {
 		return endpoints[i].Name < endpoints[j].Name
 	})
@@ -141,6 +107,8 @@ func generateTypeScript(objects ObjectStore, endpoints []Endpoint, path string) 
 			continue
 		}
 		obj.Name = strings.TrimPrefix(obj.Name, "Get")
+
+		fmt.Println("object:", obj.Name, ", used: ", obj.used)
 		if obj.used {
 			err = t1.Execute(file, obj)
 			if err != nil {

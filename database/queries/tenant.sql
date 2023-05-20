@@ -29,4 +29,3 @@ WITH ratings AS (
 	SELECT tenant_id, AVG(rating) as rating, COUNT(rating) as review_count FROM reviews GROUP BY tenant_id
 )
 SELECT tenants.tenant_id, tenant_name, rating, review_count FROM tenants LEFT JOIN ratings ON tenants.tenant_id = ratings.tenant_id;
-

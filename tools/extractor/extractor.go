@@ -215,6 +215,7 @@ func main() {
 						structtype, ok := typespec.Type.(*ast.StructType)
 						if ok {
 							objects.extractStruct(typespec.Name.Name, structtype)
+							fmt.Printf("objects[typespec.Name.Name]: %v\n", typespec.Name.Name)
 						}
 					}
 				}
@@ -235,7 +236,12 @@ func main() {
 			}
 			fmt.Printf("\tmid: %v\n", m)
 		}
-		if ep.Input != nil {
+
+		// TODO: add typealiasing support instead of hard coding this
+		if ep.Name == "ServicesForTenant" {
+			base := "Services"
+			ep.Output = objects[base+"Response"]
+		} else if ep.Input != nil {
 			base := strings.TrimSuffix(ep.Input.Name, "Request")
 			ep.Output = objects[base+"Response"]
 		} else {

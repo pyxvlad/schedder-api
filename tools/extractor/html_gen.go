@@ -127,35 +127,7 @@ const htmlTemplate = `
 </div>
 `
 
-func generateHTML(objects ObjectStore, endpoints []Endpoint, path string) {
-	used := make(map[string]bool)
-	for k, v := range objects {
-		used[k] = false
-		for _, e := range endpoints {
-
-			if e.Input == v {
-				used[k] = true
-			} else if e.Output == v {
-				used[k] = true
-			}
-		}
-
-		if used[k] {
-			var f func(obj *Object)
-			f = func(obj *Object) {
-				for nk, nv := range obj.Arrays {
-					used[nk] = true
-					f(nv)
-				}
-				for nk, nv := range obj.Objects {
-					used[nk] = true
-					f(nv)
-				}
-			}
-		}
-	}
-
-
+func generateHTML(_ ObjectStore, endpoints []Endpoint, path string) {
 	t1 := template.New("html")
 	t1, err := t1.Parse(htmlTemplate)
 	if err != nil {

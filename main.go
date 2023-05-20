@@ -23,9 +23,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
-	"github.com/jackc/pgx/v4"
 
 	// Enable the stdlib adapter of pgx, used for goose migrations.
+	"github.com/jackc/pgx/v4/pgxpool"
 	_ "github.com/jackc/pgx/v4/stdlib"
 
 	"gitlab.com/vlad.anghel/schedder-api/database"
@@ -245,7 +245,9 @@ func Run() {
 		panic(err)
 	}
 
-	conn, err := pgx.Connect(context.Background(), postgresURI)
+	
+
+	conn, err := pgxpool.Connect(context.Background(), postgresURI)
 	if err != nil {
 		panic(err)
 	}
@@ -264,9 +266,7 @@ func Run() {
 	if err := server.ListenAndServe(); err != nil {
 		panic(err)
 	}
-	if err := conn.Close(context.Background()); err != nil {
-		panic(err)
-	}
+	conn.Close()
 }
 
 func JsonError(w http.ResponseWriter, statusCode int, message string) {

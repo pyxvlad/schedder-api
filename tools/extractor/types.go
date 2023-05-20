@@ -263,7 +263,7 @@ func (e Endpoint) HtmlHeaders() string {
 	var buff bytes.Buffer
 	for _, m := range e.Middlewares {
 		if m.Name == "AuthenticatedEndpoint" {
-			fmt.Fprintf(&buff, "\"Authorization\": document.forms[\"%sForm\"][\"token\"],", e.Name)
+			fmt.Fprintf(&buff, "\"Authorization\": document.forms[\"%sForm\"][\"token\"].value,", e.Name)
 		}
 	}
 	return buff.String()
